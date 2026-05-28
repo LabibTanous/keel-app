@@ -1,15 +1,9 @@
-import { neon, neonConfig } from "@neondatabase/serverless"
-
-// Neon .c-N suffixed hostnames are direct compute endpoints — strip for HTTP proxy
-neonConfig.fetchEndpoint = (host: string) => {
-  const cleanHost = host.replace(/\.c-\d+\./, ".")
-  return `https://${cleanHost}/sql/v1/statement`
-}
+import postgres from "postgres"
 
 function getSql() {
   const url = process.env.DATABASE_URL
   if (!url) throw new Error("DATABASE_URL environment variable is not set")
-  return neon(url)
+  return postgres(url, { ssl: "require", max: 1 })
 }
 
 export async function upsertUser(data: {
@@ -19,23 +13,31 @@ export async function upsertUser(data: {
   image: string | null
 }) {
   const sql = getSql()
-  const rows = await sql`
-    INSERT INTO users (id, email, name, image)
-    VALUES (${data.id}, ${data.email}, ${data.name}, ${data.image})
-    ON CONFLICT (id) DO UPDATE
-      SET email = EXCLUDED.email,
-          name  = EXCLUDED.name,
-          image = EXCLUDED.image,
-          updated_at = NOW()
-    RETURNING *
-  `
-  return rows[0]
+  try {
+    const rows = await sql`
+      INSERT INTO users (id, email, name, image)
+      VALUES (${data.id}, ${data.email}, ${data.name}, ${data.image})
+      ON CONFLICT (id) DO UPDATE
+        SET email = EXCLUDED.email,
+            name  = EXCLUDED.name,
+            image = EXCLUDED.image,
+            updated_at = NOW()
+      RETURNING *
+    `
+    return rows[0]
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function getUser(id: string) {
   const sql = getSql()
-  const rows = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`
-  return rows[0] ?? null
+  try {
+    const rows = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`
+    return rows[0] ?? null
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function updateUserProfile(
@@ -50,20 +52,24 @@ export async function updateUserProfile(
   }
 ) {
   const sql = getSql()
-  const rows = await sql`
-    UPDATE users
-    SET
-      region_code         = COALESCE(${data.regionCode ?? null}, region_code),
-      income_type         = COALESCE(${data.incomeType ?? null}, income_type),
-      is_muslim           = COALESCE(${data.isMuslim ?? null}, is_muslim),
-      monthly_expenses    = COALESCE(${data.monthlyExpenses ?? null}, monthly_expenses),
-      savings_balance     = COALESCE(${data.savingsBalance ?? null}, savings_balance),
-      onboarding_complete = COALESCE(${data.onboardingComplete ?? null}, onboarding_complete),
-      updated_at          = NOW()
-    WHERE id = ${id}
-    RETURNING *
-  `
-  return rows[0] ?? null
+  try {
+    const rows = await sql`
+      UPDATE users
+      SET
+        region_code         = COALESCE(${data.regionCode ?? null}, region_code),
+        income_type         = COALESCE(${data.incomeType ?? null}, income_type),
+        is_muslim           = COALESCE(${data.isMuslim ?? null}, is_muslim),
+        monthly_expenses    = COALESCE(${data.monthlyExpenses ?? null}, monthly_expenses),
+        savings_balance     = COALESCE(${data.savingsBalance ?? null}, savings_balance),
+        onboarding_complete = COALESCE(${data.onboardingComplete ?? null}, onboarding_complete),
+        updated_at          = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `
+    return rows[0] ?? null
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function addIncomeEntry(data: {
@@ -74,39 +80,59 @@ export async function addIncomeEntry(data: {
   date: string
 }) {
   const sql = getSql()
-  const rows = await sql`
-    INSERT INTO income_entries (user_id, amount, source, note, date)
-    VALUES (${data.userId}, ${data.amount}, ${data.source}, ${data.note}, ${data.date})
-    RETURNING *
-  `
-  return rows[0]
+  try {
+    const rows = await sql`
+      INSERT INTO income_entries (user_id, amount, source, note, date)
+      VALUES (${data.userId}, ${data.amount}, ${data.source}, ${data.note}, ${data.date})
+      RETURNING *
+    `
+    return rows[0]
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function getIncomeEntries(userId: string, limit = 100) {
   const sql = getSql()
-  return sql`
-    SELECT * FROM income_entries
-    WHERE user_id = ${userId}
-    ORDER BY date DESC, created_at DESC
-    LIMIT ${limit}
-  `
+  try {
+    return await sql`
+      SELECT * FROM income_entries
+      WHERE user_id = ${userId}
+      ORDER BY date DESC, created_at DESC
+      LIMIT ${limit}
+    `
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function deleteIncomeEntry(id: string, userId: string) {
   const sql = getSql()
-  await sql`DELETE FROM income_entries WHERE id = ${id} AND user_id = ${userId}`
+  try {
+    await sql`DELETE FROM income_entries WHERE id = ${id} AND user_id = ${userId}`
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function getReserveBalance(userId: string): Promise<number> {
   const sql = getSql()
-  const rows = await sql`SELECT reserve_balance FROM users WHERE id = ${userId} LIMIT 1`
-  return Number(rows[0]?.reserve_balance ?? 0)
+  try {
+    const rows = await sql`SELECT reserve_balance FROM users WHERE id = ${userId} LIMIT 1`
+    return Number(rows[0]?.reserve_balance ?? 0)
+  } finally {
+    await sql.end()
+  }
 }
 
 export async function updateReserveBalance(userId: string, amount: number) {
   const sql = getSql()
-  await sql`
-    UPDATE users SET reserve_balance = ${amount}, updated_at = NOW()
-    WHERE id = ${userId}
-  `
+  try {
+    await sql`
+      UPDATE users SET reserve_balance = ${amount}, updated_at = NOW()
+      WHERE id = ${userId}
+    `
+  } finally {
+    await sql.end()
+  }
 }
