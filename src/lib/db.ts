@@ -1,4 +1,10 @@
-import { neon } from "@neondatabase/serverless"
+import { neon, neonConfig } from "@neondatabase/serverless"
+
+// Neon .c-N suffixed hostnames are direct compute endpoints — strip for HTTP proxy
+neonConfig.fetchEndpoint = (host: string) => {
+  const cleanHost = host.replace(/\.c-\d+\./, ".")
+  return `https://${cleanHost}/sql/v1/statement`
+}
 
 function getSql() {
   const url = process.env.DATABASE_URL
