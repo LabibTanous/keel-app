@@ -10,7 +10,7 @@
     "db:push": "node scripts/db-push.mjs"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.9.5",
+    "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-progress": "^1.1.0",
     "@radix-ui/react-select": "^2.1.2",
