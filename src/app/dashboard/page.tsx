@@ -10,12 +10,27 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/")
 
-  const [user, entries] = await Promise.all([
+  const [rawUser, entries] = await Promise.all([
     getUser(session.user.id),
     getIncomeEntries(session.user.id),
   ])
 
-  if (!user) redirect("/")
+  if (!rawUser) redirect("/")
+
+  // Cast DB row to typed shape
+  const user = rawUser as {
+    id: string
+    name: string | null
+    email: string
+    image: string | null
+    region_code: string | null
+    income_type: string | null
+    is_muslim: boolean | null
+    monthly_expenses: number | string | null
+    savings_balance: number | string | null
+    onboarding_complete: boolean | null
+  }
+
   if (!user.onboarding_complete) redirect("/onboarding")
 
   const typedEntries = entries as unknown as IncomeEntry[]
