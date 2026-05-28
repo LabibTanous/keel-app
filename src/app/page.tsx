@@ -85,7 +85,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-4">
             <span className="text-xs text-gray-400 hidden sm:block">Free to start · No credit card</span>
             <button
-              onClick={() => signIn("github"), { callbackUrl: "/onboarding" })}
+              onClick={() => signIn("github", { callbackUrl: "/onboarding" })}
               className="bg-keel-600 hover:bg-keel-700 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
               Get started free
@@ -108,7 +108,7 @@ export default function LandingPage() {
           Keel is built from the ground up for income that changes every month.
         </p>
         <button
-          onClick={() => signIn("github"), { callbackUrl: "/onboarding" })}
+          onClick={() => signIn("github", { callbackUrl: "/onboarding" })}
           className="inline-flex items-center gap-2 bg-keel-600 hover:bg-keel-700 text-white font-bold px-8 py-4 rounded-xl text-lg transition-colors shadow-lg shadow-keel-100 mb-4"
         >
           Start for free <ArrowRight className="w-5 h-5" />
@@ -234,7 +234,7 @@ export default function LandingPage() {
               ))}
             </ul>
             <button
-              onClick={() => signIn("github"), { callbackUrl: "/onboarding" })}
+              onClick={() => signIn("github", { callbackUrl: "/onboarding" })}
               className="w-full bg-keel-600 hover:bg-keel-700 text-white font-bold py-3.5 rounded-xl transition-colors"
             >
               Get free access
@@ -249,7 +249,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black text-white mb-4">Stop guessing. Start keeling.</h2>
           <p className="text-keel-100 mb-8">Join the waitlist for early access. Free during beta.</p>
           <button
-            onClick={() => signIn("github"), { callbackUrl: "/onboarding" })}
+            onClick={() => signIn("github", { callbackUrl: "/onboarding" })}
             className="bg-white text-keel-700 font-bold px-10 py-4 rounded-xl text-lg hover:bg-keel-50 transition-colors"
           >
             I want stable finances
