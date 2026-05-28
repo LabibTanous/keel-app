@@ -11,13 +11,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account }) {
-      if (account?.provider === "google" && user.id && user.email) {
-        await upsertUser({
-          id: user.id,
-          email: user.email,
-          name: user.name ?? null,
-          image: user.image ?? null,
-        })
+      if (account?.provider === "google") {
+        const id = account.providerAccountId
+        const email = user.email
+        if (id && email) {
+          try {
+            await upsertUser({
+              id,
+              email,
+              name: user.name ?? null,
+              image: user.image ?? null,
+            })
+          } catch (err) {
+            console.error("[auth] upsertUser failed:", err)
+          }
+        }
       }
       return true
     },
@@ -25,8 +33,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user && token.sub) session.user.id = token.sub
       return session
     },
-    async jwt({ token, user }) {
-      if (user?.id) token.sub = user.id
+    async jwt({ token, user, account }) {
+      if (account?.providerAccountId) token.sub = account.providerAccountId
+      else if (user?.id) token.sub = user.id
       return token
     },
   },
