@@ -1,10 +1,4 @@
-import { neon } from "@neondatabase/serverless"
-
-function getSql() {
-  const url = process.env.DATABASE_URL
-  if (!url) throw new Error("DATABASE_URL is not set")
-  return neon(url)
-}
+import { getSupabase } from "./supabase"
 
 export async function upsertUser(data: {
   id: string
@@ -12,24 +6,26 @@ export async function upsertUser(data: {
   name: string | null
   image: string | null
 }) {
-  const sql = getSql()
-  const rows = await sql`
-    INSERT INTO users (id, email, name, image)
-    VALUES (${data.id}, ${data.email}, ${data.name}, ${data.image})
-    ON CONFLICT (id) DO UPDATE
-      SET email = EXCLUDED.email,
-          name  = EXCLUDED.name,
-          image = EXCLUDED.image,
-          updated_at = NOW()
-    RETURNING *
-  `
-  return rows[0]
+  const { data: row, error } = await getSupabase()
+    .from("keel_users")
+    .upsert(
+      { id: data.id, email: data.email, name: data.name, image: data.image, updated_at: new Date().toISOString() },
+      { onConflict: "id" }
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return row
 }
 
 export async function getUser(id: string) {
-  const sql = getSql()
-  const rows = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`
-  return rows[0] ?? null
+  const { data, error } = await getSupabase()
+    .from("keel_users")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 export async function updateUserProfile(
@@ -43,20 +39,22 @@ export async function updateUserProfile(
     onboardingComplete?: boolean
   }
 ) {
-  const sql = getSql()
-  const rows = await sql`
-    UPDATE users SET
-      region_code         = COALESCE(${data.regionCode ?? null}, region_code),
-      income_type         = COALESCE(${data.incomeType ?? null}, income_type),
-      is_muslim           = COALESCE(${data.isMuslim ?? null}, is_muslim),
-      monthly_expenses    = COALESCE(${data.monthlyExpenses ?? null}, monthly_expenses),
-      savings_balance     = COALESCE(${data.savingsBalance ?? null}, savings_balance),
-      onboarding_complete = COALESCE(${data.onboardingComplete ?? null}, onboarding_complete),
-      updated_at          = NOW()
-    WHERE id = ${id}
-    RETURNING *
-  `
-  return rows[0] ?? null
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (data.regionCode !== undefined) update.region_code = data.regionCode
+  if (data.incomeType !== undefined) update.income_type = data.incomeType
+  if (data.isMuslim !== undefined) update.is_muslim = data.isMuslim
+  if (data.monthlyExpenses !== undefined) update.monthly_expenses = data.monthlyExpenses
+  if (data.savingsBalance !== undefined) update.savings_balance = data.savingsBalance
+  if (data.onboardingComplete !== undefined) update.onboarding_complete = data.onboardingComplete
+
+  const { data: row, error } = await getSupabase()
+    .from("keel_users")
+    .update(update)
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) throw error
+  return row
 }
 
 export async function addIncomeEntry(data: {
@@ -66,40 +64,56 @@ export async function addIncomeEntry(data: {
   note: string | null
   date: string
 }) {
-  const sql = getSql()
-  const rows = await sql`
-    INSERT INTO income_entries (user_id, amount, source, note, date)
-    VALUES (${data.userId}, ${data.amount}, ${data.source}, ${data.note}, ${data.date})
-    RETURNING *
-  `
-  return rows[0]
+  const { data: row, error } = await getSupabase()
+    .from("keel_income_entries")
+    .insert({
+      user_id: data.userId,
+      amount: data.amount,
+      source: data.source,
+      note: data.note,
+      date: data.date,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return row
 }
 
 export async function getIncomeEntries(userId: string, limit = 100) {
-  const sql = getSql()
-  return sql`
-    SELECT * FROM income_entries
-    WHERE user_id = ${userId}
-    ORDER BY date DESC, created_at DESC
-    LIMIT ${limit}
-  `
+  const { data, error } = await getSupabase()
+    .from("keel_income_entries")
+    .select("*")
+    .eq("user_id", userId)
+    .order("date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data ?? []
 }
 
 export async function deleteIncomeEntry(id: string, userId: string) {
-  const sql = getSql()
-  await sql`DELETE FROM income_entries WHERE id = ${id} AND user_id = ${userId}`
+  const { error } = await getSupabase()
+    .from("keel_income_entries")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId)
+  if (error) throw error
 }
 
 export async function getReserveBalance(userId: string): Promise<number> {
-  const sql = getSql()
-  const rows = await sql`SELECT reserve_balance FROM users WHERE id = ${userId} LIMIT 1`
-  return Number(rows[0]?.reserve_balance ?? 0)
+  const { data, error } = await getSupabase()
+    .from("keel_users")
+    .select("reserve_balance")
+    .eq("id", userId)
+    .maybeSingle()
+  if (error) throw error
+  return Number(data?.reserve_balance ?? 0)
 }
 
 export async function updateReserveBalance(userId: string, amount: number) {
-  const sql = getSql()
-  await sql`
-    UPDATE users SET reserve_balance = ${amount}, updated_at = NOW()
-    WHERE id = ${userId}
-  `
+  const { error } = await getSupabase()
+    .from("keel_users")
+    .update({ reserve_balance: amount, updated_at: new Date().toISOString() })
+    .eq("id", userId)
+  if (error) throw error
 }
