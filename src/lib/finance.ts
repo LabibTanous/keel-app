@@ -63,7 +63,9 @@ export function formatCurrency(
   symbol: string,
   currency: string
 ): string {
-  return `${symbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency}`
+  const n = amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  if (symbol === currency) return `${symbol} ${n}`
+  return `${symbol}${n}`
 }
 
 export function canIAffordThis(

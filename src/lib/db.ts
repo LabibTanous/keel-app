@@ -117,3 +117,19 @@ export async function updateReserveBalance(userId: string, amount: number) {
     .eq("id", userId)
   if (error) throw error
 }
+
+export async function getOrCreateLogToken(userId: string): Promise<string> {
+  const { data, error } = await getSupabase()
+    .from("keel_users")
+    .select("log_token")
+    .eq("id", userId)
+    .single()
+  if (error) throw error
+  if (data?.log_token) return data.log_token
+  const token = crypto.randomUUID()
+  await getSupabase()
+    .from("keel_users")
+    .update({ log_token: token })
+    .eq("id", userId)
+  return token
+}

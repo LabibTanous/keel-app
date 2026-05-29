@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
-import { getUser, getIncomeEntries } from "@/lib/db"
+import { getUser, getIncomeEntries, getOrCreateLogToken } from "@/lib/db"
 import DashboardClient from "./DashboardClient"
 import { rollingAverage, currentMonthTotal, runwayMonths, incomeMode, safeBudget, groupByMonth } from "@/lib/finance"
 import { calculateReserve } from "@/lib/tax-profiles"
@@ -10,14 +10,14 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/")
 
-  const [rawUser, entries] = await Promise.all([
+  const [rawUser, entries, logToken] = await Promise.all([
     getUser(session.user.id),
     getIncomeEntries(session.user.id),
+    getOrCreateLogToken(session.user.id),
   ])
 
   if (!rawUser) redirect("/")
 
-  // Cast DB row to typed shape
   const user = rawUser as {
     id: string
     name: string | null
@@ -78,6 +78,7 @@ export default async function DashboardPage() {
         recentEntries: typedEntries.slice(0, 10),
         monthlyChart,
       }}
+      logToken={logToken}
     />
   )
 }
