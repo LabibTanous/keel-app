@@ -87,12 +87,20 @@ export default function LandingPage() {
             Keel is the financial tool for freelancers, gig workers, and creators.
             Income smoothing, tax reserve, runway tracker — one dashboard.
           </p>
-          <button
-            onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
-            className="inline-flex items-center gap-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-8 py-4 rounded-xl text-base transition-colors shadow-lg shadow-emerald-900/30 mb-3"
-          >
-            Start for free <ArrowRight className="w-5 h-5" />
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-3">
+            <button
+              onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
+              className="inline-flex items-center gap-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-8 py-4 rounded-xl text-base transition-colors shadow-lg shadow-emerald-900/30"
+            >
+              Start for free <ArrowRight className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => signIn("demo", { callbackUrl: "/dashboard" })}
+              className="inline-flex items-center gap-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold px-8 py-4 rounded-xl text-base transition-colors"
+            >
+              Try demo — no login
+            </button>
+          </div>
           <p className="text-xs text-slate-600">No credit card. No bank connection. Setup in 2 minutes.</p>
         </div>
       </section>

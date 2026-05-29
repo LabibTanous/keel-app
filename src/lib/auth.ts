@@ -1,5 +1,6 @@
 import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
+import Credentials from "next-auth/providers/credentials"
 import { upsertUser } from "@/lib/db"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -7,6 +8,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    Credentials({
+      id: "demo",
+      name: "Demo",
+      credentials: {},
+      async authorize() {
+        return {
+          id: "demo-user-001",
+          email: "demo@keel.app",
+          name: "Demo User",
+          image: null,
+        }
+      },
     }),
   ],
   callbacks: {
@@ -34,7 +48,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session
     },
     async jwt({ token, user, account }) {
-      if (account?.providerAccountId) token.sub = account.providerAccountId
+      if (account?.provider === "demo") token.sub = "demo-user-001"
+      else if (account?.providerAccountId) token.sub = account.providerAccountId
       else if (user?.id) token.sub = user.id
       return token
     },
