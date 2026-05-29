@@ -1,3 +1,5 @@
+import type { Advice } from "@/lib/advice"
+
 export interface UserProfile {
   id: string
   email: string
@@ -40,6 +42,16 @@ export interface IncomeEntry {
   createdAt: Date
 }
 
+export interface ExpenseEntry {
+  id: string
+  userId: string
+  amount: number
+  category: string
+  note: string | null
+  date: string
+  createdAt: Date
+}
+
 export type IncomeModeType = "lean" | "normal" | "flush"
 
 export interface DashboardData {
@@ -52,4 +64,8 @@ export interface DashboardData {
   mode: IncomeModeType
   recentEntries: IncomeEntry[]
   monthlyChart: { month: string; amount: number }[]
+  sourceBreakdown: { source: string; amount: number }[]
+  advice: Advice[]
 }
+
+export { type Advice }

@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { ChevronRight, ChevronLeft, Globe, Briefcase, DollarSign, Anchor } from "lucide-react"
+import { signIn } from "next-auth/react"
+import { ChevronRight, ChevronLeft, Globe, Briefcase, DollarSign, Anchor, Loader2 } from "lucide-react"
 import { REGIONS, TAX_PROFILES } from "@/lib/tax-profiles"
 import { INCOME_TYPE_LABELS, type IncomeType } from "@/types"
 
@@ -26,24 +27,48 @@ export default function OnboardingPage() {
   const router = useRouter()
   const { status } = useSession()
 
-  if (status === "unauthenticated") {
-    if (typeof window !== "undefined") router.push("/")
-    return null
-  }
-
+  // All hooks at top — no conditional hook calls
   const [step, setStep] = useState<Step>("region")
-  const [regionCode, setRegionCode] = useState("US")
+  const [regionCode, setRegionCode] = useState("AE")
   const [incomeType, setIncomeType] = useState<IncomeType>("freelancer")
   const [isMuslim, setIsMuslim] = useState(false)
   const [monthlyExpenses, setMonthlyExpenses] = useState("")
   const [savingsBalance, setSavingsBalance] = useState("")
   const [saving, setSaving] = useState(false)
+  const [autoSigningIn, setAutoSigningIn] = useState(false)
 
   const profile = TAX_PROFILES[regionCode]
   const isGCC = ["AE", "SA", "QA", "KW", "BH", "OM"].includes(regionCode)
   const steps: Step[] = ["region", "income_type", ...(isGCC ? ["religion" as Step] : []), "expenses", "savings"]
   const currentIdx = steps.indexOf(step)
   const progress = ((currentIdx + 1) / steps.length) * 100
+
+  // Auto sign-in anonymously if unauthenticated
+  useEffect(() => {
+    if (status === "unauthenticated" && !autoSigningIn) {
+      setAutoSigningIn(true)
+      let userId = ""
+      try {
+        userId = localStorage.getItem("keel_anonymous_id") || ""
+        if (!userId) {
+          userId = `anon_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+          localStorage.setItem("keel_anonymous_id", userId)
+        }
+      } catch {}
+      signIn("anonymous", { userId, redirect: false }).catch(() => {})
+    }
+  }, [status, autoSigningIn])
+
+  if (status === "loading" || autoSigningIn) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-500">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm font-medium">Setting up your account…</span>
+        </div>
+      </div>
+    )
+  }
 
   const next = () => {
     const nextIdx = currentIdx + 1
@@ -113,7 +138,7 @@ export default function OnboardingPage() {
             {step === "region" && (
               <div>
                 <p className="text-sm text-slate-500 mb-4">We set your tax reserve % automatically. Everything is an estimate — not tax advice.</p>
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {REGIONS.map((r) => (
                     <button
                       key={r.code}
@@ -203,6 +228,7 @@ export default function OnboardingPage() {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">{profile?.currencySymbol ?? "$"}</span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     value={monthlyExpenses}
                     onChange={(e) => setMonthlyExpenses(e.target.value)}
                     placeholder="3500"
@@ -210,18 +236,19 @@ export default function OnboardingPage() {
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-slate-400">Powers your runway calculator</p>
+                <p className="text-xs text-slate-400">Powers your runway calculator. Update anytime in settings.</p>
               </div>
             )}
 
             {/* Savings */}
             {step === "savings" && (
               <div>
-                <p className="text-sm text-slate-500 mb-4">How much do you have saved right now? Rough estimate is fine — you can update anytime.</p>
+                <p className="text-sm text-slate-500 mb-4">How much do you have saved right now? Rough estimate is fine — update anytime in settings.</p>
                 <div className="relative mb-2">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">{profile?.currencySymbol ?? "$"}</span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     value={savingsBalance}
                     onChange={(e) => setSavingsBalance(e.target.value)}
                     placeholder="10000"

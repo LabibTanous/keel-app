@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth"
 import { getUser, getIncomeEntries, getOrCreateLogToken } from "@/lib/db"
 import DashboardClient from "./DashboardClient"
 import { rollingAverage, currentMonthTotal, runwayMonths, incomeMode, safeBudget, groupByMonth } from "@/lib/finance"
-import { calculateReserve } from "@/lib/tax-profiles"
+import { calculateReserve, TAX_PROFILES } from "@/lib/tax-profiles"
+import { generateAdvice } from "@/lib/advice"
 import type { IncomeEntry } from "@/types"
 
 export default async function DashboardPage() {
@@ -34,13 +35,12 @@ export default async function DashboardPage() {
   if (!user.onboarding_complete) redirect("/onboarding")
 
   const typedEntries = entries as unknown as IncomeEntry[]
+  const regionCode = user.region_code ?? "AE"
 
   const avg = rollingAverage(typedEntries, 6)
   const currentMonth = currentMonthTotal(typedEntries)
   const { reservePercent, reserveAmount: rawReserve } = calculateReserve(
-    avg,
-    user.region_code ?? "US",
-    user.is_muslim ?? false
+    avg, regionCode, user.is_muslim ?? false
   )
   const reserveBalance = rawReserve * 6
   const runway = runwayMonths(
@@ -55,13 +55,39 @@ export default async function DashboardPage() {
     .slice(-6)
     .map(([month, amount]) => ({ month, amount }))
 
+  // Source breakdown — top income sources
+  const sourceMap: Record<string, number> = {}
+  for (const e of typedEntries) {
+    sourceMap[e.source] = (sourceMap[e.source] ?? 0) + Number(e.amount)
+  }
+  const sourceBreakdown = Object.entries(sourceMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6)
+    .map(([source, amount]) => ({ source, amount }))
+
+  // Generate advice
+  const profile = TAX_PROFILES[regionCode]
+  const advice = generateAdvice({
+    runwayMonths: runway,
+    rollingAverage: avg,
+    currentMonthIncome: currentMonth,
+    reservePercent,
+    reserveBalance,
+    monthlyExpenses: Number(user.monthly_expenses ?? 0),
+    savingsBalance: Number(user.savings_balance ?? 0),
+    incomeEntryCount: typedEntries.length,
+    incomeType: user.income_type ?? "freelancer",
+    isMuslim: user.is_muslim ?? false,
+    hasZakat: profile?.hasZakat ?? false,
+  })
+
   return (
     <DashboardClient
       user={{
         name: user.name,
         email: user.email,
         image: user.image,
-        regionCode: user.region_code ?? "US",
+        regionCode,
         incomeType: user.income_type ?? "freelancer",
         isMuslim: user.is_muslim ?? false,
         monthlyExpenses: Number(user.monthly_expenses ?? 0),
@@ -77,6 +103,8 @@ export default async function DashboardPage() {
         mode,
         recentEntries: typedEntries.slice(0, 10),
         monthlyChart,
+        sourceBreakdown,
+        advice,
       }}
       logToken={logToken}
     />

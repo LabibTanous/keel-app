@@ -32,22 +32,22 @@ const FEATURES = [
 ]
 
 const MODES = [
-  {
-    key: "LEAN",
-    dot: "bg-rose-500",
-    desc: "Below your average. Keel tightens your spending limit automatically.",
-  },
-  {
-    key: "NORMAL",
-    dot: "bg-emerald-500",
-    desc: "On track. Budget based on your rolling average.",
-  },
-  {
-    key: "FLUSH",
-    dot: "bg-indigo-500",
-    desc: "Above average. Keel flags the surplus — so you save it, not spend it.",
-  },
+  { key: "LEAN", dot: "bg-rose-500", desc: "Below your average. Keel tightens your spending limit automatically." },
+  { key: "NORMAL", dot: "bg-emerald-500", desc: "On track. Budget based on your rolling average." },
+  { key: "FLUSH", dot: "bg-indigo-500", desc: "Above average. Keel flags the surplus — so you save it, not spend it." },
 ]
+
+function startFree() {
+  let userId = ""
+  try {
+    userId = localStorage.getItem("keel_anonymous_id") || ""
+    if (!userId) {
+      userId = `anon_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+      localStorage.setItem("keel_anonymous_id", userId)
+    }
+  } catch {}
+  signIn("anonymous", { userId, callbackUrl: "/onboarding" })
+}
 
 export default function LandingPage() {
   return (
@@ -64,7 +64,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-4">
             <span className="text-xs text-slate-400 hidden sm:block">Free · No bank login</span>
             <button
-              onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
+              onClick={startFree}
               className="bg-slate-900 hover:bg-slate-700 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
               Get started
@@ -87,21 +87,13 @@ export default function LandingPage() {
             Keel is the financial tool for freelancers, gig workers, and creators.
             Income smoothing, tax reserve, runway tracker — one dashboard.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-3">
-            <button
-              onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
-              className="inline-flex items-center gap-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-8 py-4 rounded-xl text-base transition-colors shadow-lg shadow-emerald-900/30"
-            >
-              Start for free <ArrowRight className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => signIn("demo", { callbackUrl: "/dashboard" })}
-              className="inline-flex items-center gap-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold px-8 py-4 rounded-xl text-base transition-colors"
-            >
-              Try demo — no login
-            </button>
-          </div>
-          <p className="text-xs text-slate-600">No credit card. No bank connection. Setup in 2 minutes.</p>
+          <button
+            onClick={startFree}
+            className="inline-flex items-center gap-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-10 py-4 rounded-xl text-base transition-colors shadow-lg shadow-emerald-900/30 mb-3"
+          >
+            Start for free <ArrowRight className="w-5 h-5" />
+          </button>
+          <p className="text-xs text-slate-600">No sign-up. No credit card. 2-minute setup.</p>
         </div>
       </section>
 
@@ -202,8 +194,8 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black text-slate-900 mb-12 text-center">Up and running in 2 minutes</h2>
           <div className="space-y-4">
             {[
-              { n: "1", title: "Sign in with Google", desc: "One click. No password." },
-              { n: "2", title: "Tell us your setup", desc: "Country, income type, expenses. 4 questions." },
+              { n: "1", title: "Tap Start for free", desc: "No sign-up, no password. Your data stays in your browser." },
+              { n: "2", title: "Tell us your setup", desc: "Country, income type, expenses. 4 quick questions." },
               { n: "3", title: "Log income as it arrives", desc: "Every payment updates your budget, tax jar, and runway instantly." },
               { n: "4", title: "Know exactly where you stand", desc: "Dashboard shows your safe budget, runway, reserve, and income mode." },
             ].map((s) => (
@@ -236,6 +228,8 @@ export default function LandingPage() {
                 "Runway calculator",
                 "Can I Afford This? tool",
                 "Unlimited income logging",
+                "Expense tracking",
+                "AI financial advice",
               ].map((f) => (
                 <li key={f} className="flex items-center gap-2.5 text-sm text-slate-700">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -244,10 +238,10 @@ export default function LandingPage() {
               ))}
             </ul>
             <button
-              onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
+              onClick={startFree}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-xl transition-colors"
             >
-              Get free access
+              Get free access — no sign-up
             </button>
           </div>
         </div>
@@ -259,7 +253,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-black text-white mb-4">Stop guessing. Start keeling.</h2>
           <p className="text-slate-400 mb-8">Join freelancers and creators who know exactly where they stand — every month.</p>
           <button
-            onClick={() => signIn("google", { callbackUrl: "/onboarding" })}
+            onClick={startFree}
             className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black px-10 py-4 rounded-xl text-lg transition-colors"
           >
             Get started free <ChevronRight className="w-5 h-5" />

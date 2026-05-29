@@ -2,15 +2,17 @@
 
 import { useState } from "react"
 import { signOut } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import Image from "next/image"
 import {
   TrendingUp, Shield, Anchor, Plus, LogOut,
   AlertTriangle, CheckCircle2, TrendingDown, Zap, X, Loader2,
   ArrowUpRight, Wallet, Copy, Check, ChevronDown, Smartphone,
+  Settings, Lightbulb, PieChart,
 } from "lucide-react"
 import { TAX_PROFILES } from "@/lib/tax-profiles"
 import { formatCurrency, canIAffordThis } from "@/lib/finance"
-import type { DashboardData } from "@/types"
+import type { DashboardData, Advice } from "@/types"
 
 interface Props {
   user: {
@@ -134,8 +136,41 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+function AdviceCard({ advice }: { advice: Advice }) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+  const colors = {
+    warning: "bg-rose-50 border-rose-200 text-rose-800",
+    tip: "bg-amber-50 border-amber-200 text-amber-800",
+    info: "bg-blue-50 border-blue-200 text-blue-800",
+    success: "bg-emerald-50 border-emerald-200 text-emerald-800",
+  }
+  const icons = {
+    warning: AlertTriangle,
+    tip: Lightbulb,
+    info: ArrowUpRight,
+    success: CheckCircle2,
+  }
+  const Icon = icons[advice.type]
+  return (
+    <div className={`rounded-xl border p-3.5 ${colors[advice.type]}`}>
+      <div className="flex items-start gap-2.5">
+        <Icon className="w-4 h-4 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold leading-snug">{advice.title}</p>
+          <p className="text-xs mt-0.5 opacity-80 leading-relaxed">{advice.body}</p>
+        </div>
+        <button onClick={() => setDismissed(true)} className="shrink-0 opacity-50 hover:opacity-100 transition-opacity">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardClient({ user, dashboardData: d, logToken }: Props) {
-  const profile = TAX_PROFILES[user.regionCode] ?? TAX_PROFILES.US
+  const router = useRouter()
+  const profile = TAX_PROFILES[user.regionCode] ?? TAX_PROFILES.AE
   const fmt = (n: number) => formatCurrency(n, profile.currencySymbol, profile.currency)
   const m = MODE_CONFIG[d.mode]
 
@@ -192,6 +227,13 @@ export default function DashboardClient({ user, dashboardData: d, logToken }: Pr
             {user.image && (
               <Image src={user.image} alt={user.name ?? ""} width={26} height={26} className="rounded-full ring-2 ring-slate-200 hidden sm:block" />
             )}
+            <button
+              onClick={() => router.push("/profile")}
+              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
               className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
@@ -378,6 +420,53 @@ export default function DashboardClient({ user, dashboardData: d, logToken }: Pr
             </div>
           )}
         </div>
+
+        {/* Advice section */}
+        {d.advice.length > 0 && (
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-amber-500" />
+              <h3 className="text-sm font-bold text-slate-900">Advice</h3>
+            </div>
+            {d.advice.map((a) => <AdviceCard key={a.id} advice={a} />)}
+          </div>
+        )}
+
+        {/* Source breakdown */}
+        {d.sourceBreakdown.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+              <PieChart className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-bold text-slate-900">Income by source</h3>
+            </div>
+            <div className="p-4 sm:p-5 space-y-3">
+              {(() => {
+                const total = d.sourceBreakdown.reduce((s, x) => s + x.amount, 0)
+                const colors = ["bg-emerald-500", "bg-indigo-500", "bg-amber-400", "bg-rose-400", "bg-slate-400", "bg-teal-400"]
+                return d.sourceBreakdown.map((s, i) => {
+                  const pct = total > 0 ? Math.round((s.amount / total) * 100) : 0
+                  return (
+                    <div key={s.source}>
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${colors[i % colors.length]}`} />
+                          <span className="font-semibold text-slate-700 truncate max-w-[140px]">{s.source}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-slate-500">{pct}%</span>
+                          <span className="font-black text-slate-900">{fmt(s.amount)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-1.5 rounded-full ${colors[i % colors.length]}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          </div>
+        )}
 
         {/* iOS Shortcut */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

@@ -10,16 +10,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
     Credentials({
+      id: "anonymous",
+      name: "Anonymous",
+      credentials: { userId: { label: "User ID", type: "text" } },
+      async authorize(credentials) {
+        const userId = credentials?.userId as string
+        if (!userId || userId.length < 8) return null
+        const email = `${userId.slice(0, 12)}@keel.local`
+        try {
+          await upsertUser({ id: userId, email, name: null, image: null })
+        } catch {}
+        return { id: userId, email, name: null, image: null }
+      },
+    }),
+    Credentials({
       id: "demo",
       name: "Demo",
       credentials: {},
       async authorize() {
-        return {
-          id: "demo-user-001",
-          email: "demo@keel.app",
-          name: "Demo User",
-          image: null,
-        }
+        return { id: "demo-user-001", email: "demo@keel.app", name: "Demo User", image: null }
       },
     }),
   ],
@@ -30,12 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = user.email
         if (id && email) {
           try {
-            await upsertUser({
-              id,
-              email,
-              name: user.name ?? null,
-              image: user.image ?? null,
-            })
+            await upsertUser({ id, email, name: user.name ?? null, image: user.image ?? null })
           } catch (err) {
             console.error("[auth] upsertUser failed:", err)
           }
@@ -48,7 +52,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session
     },
     async jwt({ token, user, account }) {
-      if (account?.provider === "demo") token.sub = "demo-user-001"
+      if (account?.provider === "anonymous" && user?.id) token.sub = user.id
+      else if (account?.provider === "demo") token.sub = "demo-user-001"
       else if (account?.providerAccountId) token.sub = account.providerAccountId
       else if (user?.id) token.sub = user.id
       return token
