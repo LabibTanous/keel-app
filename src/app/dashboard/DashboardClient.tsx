@@ -8,10 +8,11 @@ import {
   TrendingUp, Shield, Anchor, Plus, LogOut,
   AlertTriangle, CheckCircle2, TrendingDown, Zap, X, Loader2,
   ArrowUpRight, Wallet, Copy, Check, ChevronDown, Smartphone,
-  Settings, Lightbulb, PieChart,
+  Settings, Lightbulb, PieChart, Home, User,
 } from "lucide-react"
 import { TAX_PROFILES } from "@/lib/tax-profiles"
 import { formatCurrency, canIAffordThis } from "@/lib/finance"
+import { Dock } from "@/components/ui/dock-two"
 import type { DashboardData, Advice } from "@/types"
 
 interface Props {
@@ -245,7 +246,7 @@ export default function DashboardClient({ user, dashboardData: d, logToken }: Pr
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-4 pt-5 pb-28 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 pt-5 pb-36 space-y-4">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -531,14 +532,17 @@ export default function DashboardClient({ user, dashboardData: d, logToken }: Pr
         </div>
       </div>
 
-      {/* Mobile FAB */}
-      <button
-        onClick={() => setShowLogIncome(true)}
-        className="sm:hidden fixed bottom-6 right-4 w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-200 flex items-center justify-center z-30 transition-transform active:scale-95"
-        aria-label="Log income"
-      >
-        <Plus className="w-6 h-6" />
-      </button>
+      {/* Bottom Dock — mobile nav */}
+      <div className="fixed bottom-4 left-0 right-0 z-30 px-4 sm:bottom-6">
+        <Dock
+          items={[
+            { icon: Home, label: "Dashboard", active: true, onClick: () => {} },
+            { icon: Plus, label: "Log Income", onClick: () => setShowLogIncome(true) },
+            { icon: User, label: "Profile", onClick: () => router.push("/profile") },
+            { icon: Settings, label: "Settings", onClick: () => router.push("/profile") },
+          ]}
+        />
+      </div>
 
       {/* Log Income Modal */}
       {showLogIncome && (

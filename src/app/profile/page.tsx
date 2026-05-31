@@ -4,9 +4,10 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { signOut } from "next-auth/react"
-import { Anchor, ChevronLeft, Save, Loader2, LogOut, User, Globe, DollarSign, Briefcase, Check } from "lucide-react"
+import { Anchor, ChevronLeft, Save, Loader2, LogOut, Globe, DollarSign, Briefcase, Check, Lock } from "lucide-react"
 import { REGIONS, TAX_PROFILES } from "@/lib/tax-profiles"
 import { INCOME_TYPE_LABELS, type IncomeType } from "@/types"
+import { AssistedPasswordConfirmation } from "@/components/ui/assisted-password-confirmation"
 
 const INCOME_TYPES: IncomeType[] = [
   "freelancer", "gig_worker", "creator", "consultant", "business_owner", "mixed",
@@ -19,6 +20,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  const [newPassword, setNewPassword] = useState("")
+  const [passwordSaved, setPasswordSaved] = useState(false)
 
   const [regionCode, setRegionCode] = useState("AE")
   const [incomeType, setIncomeType] = useState<IncomeType>("freelancer")
@@ -228,6 +232,41 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Account password */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
+            <Lock className="w-4 h-4 text-slate-500" />
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Set account password</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Optional — secure your data with a password</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">New password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter a password"
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl text-sm tracking-widest focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+            {newPassword.length >= 6 && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Confirm password</label>
+                <AssistedPasswordConfirmation password={newPassword} />
+              </div>
+            )}
+            {newPassword.length > 0 && newPassword.length < 6 && (
+              <p className="text-xs text-slate-400">Password must be at least 6 characters</p>
+            )}
+            {passwordSaved && (
+              <p className="text-xs font-semibold text-emerald-600">Password saved ✓</p>
+            )}
           </div>
         </div>
 
