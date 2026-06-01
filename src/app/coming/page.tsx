@@ -219,7 +219,7 @@ function Approx({ on }: { on: boolean }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function ComingPage() {
-  const { profile } = usePlan();
+  const { profile, addIncome } = usePlan();
   const [view, setView] = useState('expected');
   const [adding, setAdding] = useState(false);
 
@@ -232,10 +232,22 @@ export default function ComingPage() {
   });
   const [received, setReceived] = useState<Record<string, boolean>>({});
 
-  const toggle = (id: string) => setCounted(c => ({ ...c, [id]: !c[id] }));
-  const markReceived = (id: string) => setReceived(r => ({ ...r, [id]: true }));
-
   const aedOf = (it: TimelineItemData) => toAED(it.amt, it.ccy);
+
+  // Toggle "Count it" — local view only (plan reads current-month incomes automatically)
+  const toggle = (id: string) => setCounted(c => ({ ...c, [id]: !c[id] }));
+
+  // "Mark as received" — adds income to the store with today's date + confirmed confidence.
+  // computePlan auto-picks it up in trackedThisMonth (current-month incomes are auto-derived).
+  const markReceived = (id: string) => {
+    const idx = parseInt(id.replace('inc-', ''), 10);
+    const inc = profile.incomes[idx];
+    if (inc) {
+      const today = new Date().toISOString().slice(0, 10);
+      addIncome({ amount: inc.amount, currency: inc.currency, date: today, confidence: 'confirmed' });
+    }
+    setReceived(r => ({ ...r, [id]: true }));
+  };
 
   const now = new Date();
   const expectedItems = allItems.filter(i => !received[i.id]);

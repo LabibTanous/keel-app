@@ -654,13 +654,16 @@ export default function OnboardingPage(): React.ReactElement {
       (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.bills.replace(/[^0-9]/g, ''), 10) || 0);
 
+    const bufferBalance = parseInt(data.savings.replace(/[^0-9]/g, ''), 10) || 0;
+    const zakatOn = data.regionCode === 'AE' || data.regionCode === 'SA';
     const profile: Profile = {
       region: data.regionCode,
       currency: data.ccy,
       essentials,
-      bufferBalance: parseInt(data.savings.replace(/[^0-9]/g, ''), 10) || 0,
+      bufferBalance,
       targetMonths: 3,
-      zakatOn: data.regionCode === 'AE' || data.regionCode === 'SA',
+      zakatOn,
+      zakatableWealth: zakatOn ? bufferBalance : 0,
       incomes: incomeItems,
     };
 

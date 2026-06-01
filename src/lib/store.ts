@@ -49,9 +49,17 @@ export interface PlanStore {
 
 // ── Pure plan derivation ──────────────────────────────────────────────────────
 
-export function computePlan(profile: Profile, trackedThisMonth = 0): Plan {
+export function computePlan(profile: Profile, trackedOverride = 0): Plan {
   const monthlyTotals = groupByMonth(profile.incomes);
   const range = computeRange(monthlyTotals);
+
+  // Auto-derive tracked-this-month from current-month income items already in the profile.
+  // trackedOverride (from manual "mark received" actions) adds on top.
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const autoTracked = profile.incomes
+    .filter(i => i.date.startsWith(currentMonth))
+    .reduce((sum, i) => sum + toAED(i.amount, i.currency), 0);
+  const trackedThisMonth = trackedOverride + autoTracked;
 
   const rawPaycheck = profile.paycheckOverride !== undefined
     ? profile.paycheckOverride

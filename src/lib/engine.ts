@@ -331,7 +331,7 @@ export function detectSignals(
     });
   }
 
-  const outlook = computeOutlook(trackedThisMonth, range.likely / 4); // rough weekly pace
+  const outlook = computeOutlook(trackedThisMonth, range.likely);
   if (outlook === 'running lean') {
     out.push({
       kind: 'warning',
