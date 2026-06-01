@@ -4,6 +4,11 @@
  * store.ts — Keel's single source of truth.
  * React Context + localStorage persistence.
  * Pure derivation: every Profile change triggers a full engine recompute.
+ *
+ * TODO(data-loss): plan persists only in localStorage; clearing the browser wipes it.
+ * Wire to the Supabase keel_users row tied to the anonymous session so it survives.
+ * /api/user PATCH exists but requires session.user.id — needs an auth/anonymous-session
+ * flow before best-effort server save can be wired here.
  */
 
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
@@ -76,8 +81,14 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
   );
 
   const runway = computeRunway(profile.bufferBalance, profile.essentials);
-  const outlook = computeOutlook(trackedThisMonth, range.likely);
-  const signals = detectSignals(range, allocation, trackedThisMonth);
+
+  // Prorate expected pace by how far through the month we are.
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const fractionElapsed = now.getDate() / daysInMonth;
+
+  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
+  const signals = detectSignals(range, allocation, trackedThisMonth, fractionElapsed);
 
   // YTD tax turnover: sum all incomes in current calendar year
   const thisYear = new Date().getFullYear().toString();

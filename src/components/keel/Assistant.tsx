@@ -4,8 +4,8 @@
  * Assistant.tsx — Keel's in-app AI financial adviser.
  * TypeScript port of keel_handoff/design_reference/components/Assistant.jsx.
  *
- * Knows the user's current plan. Streams answers via window.claude?.complete.
- * Falls back to static responses if window.claude unavailable.
+ * Knows the user's current plan. Calls /api/assistant (Anthropic server-side).
+ * Falls back to static responses if the API key is not configured.
  * Refuses specific investment advice (stocks, crypto, ETFs, etc.) with a
  * designed refusal message.
  */
@@ -82,18 +82,6 @@ function staticFallback(question: string, plan: Plan): string {
   return `I couldn’t reach the adviser just now — give it another go in a moment.`;
 }
 
-// ── Declare global window.claude type extension ───────────────────────────────
-
-declare global {
-  interface Window {
-    claude?: {
-      complete: (opts: {
-        messages: { role: string; content: string }[];
-      }) => Promise<string>;
-    };
-  }
-}
-
 // ── Assistant component ───────────────────────────────────────────────────────
 
 export function Assistant({ open, onClose, plan }: AssistantProps) {
@@ -139,31 +127,20 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
     }
 
     try {
-      if (typeof window !== 'undefined' && window.claude?.complete) {
-        const convo = next
-          .map(m => (m.role === 'user' ? 'User: ' : 'Adviser: ') + m.content)
-          .join('\n');
-        const context = buildContext(plan);
-        const reply = await window.claude.complete({
-          messages: [{
-            role: 'user',
-            content: context + '\n\nConversation so far:\n' + convo + '\n\nReply as the adviser to the latest user message.',
-          }],
-        });
-        setMsgs(m => [
-          ...m,
-          { role: 'assistant', content: (reply || '').trim() || "Sorry — I didn’t catch that. Try asking again." },
-        ]);
+      const res = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ system: buildContext(plan), conversation: next }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const reply = (data.reply || "").trim();
+        setMsgs(m => [...m, { role: "assistant", content: reply || staticFallback(q, plan) }]);
       } else {
-        // Fallback to static response
-        const reply = staticFallback(q, plan);
-        setMsgs(m => [...m, { role: 'assistant', content: reply }]);
+        setMsgs(m => [...m, { role: "assistant", content: staticFallback(q, plan) }]);
       }
     } catch {
-      setMsgs(m => [
-        ...m,
-        { role: 'assistant', content: "I couldn’t reach the adviser just now — give it another go in a moment." },
-      ]);
+      setMsgs(m => [...m, { role: "assistant", content: staticFallback(q, plan) }]);
     }
 
     setBusy(false);

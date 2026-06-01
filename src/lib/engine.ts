@@ -165,41 +165,39 @@ export function computeRange(monthlyTotals: Record<string, number>): IncomeRange
 }
 
 /**
- * Recommend a steady paycheck:
- * - <= likely
- * - >= essentials (if possible)
- * - leaves positive buffer contribution
- * - rounded to nearest 250
+ * Recommend a steady paycheck scaled by income volatility.
+ * Wider lean→strong spread = more volatile = more conservative payout.
+ * Safety factor: steady (~0.85 of likely) down to choppy (~0.55 of likely).
  */
 export function computePaycheck(
   range: IncomeRange,
   essentials: number,
   bufferBalance: number,
 ): number {
-  // Start from likely, step down until buffer contribution is positive
-  // Buffer contribution = likely - paycheck > 0 means paycheck < likely
-  // We want: paycheck <= likely AND paycheck >= essentials (if feasible)
-  const candidate = Math.min(range.likely, range.likely - 1); // just under likely
-  // Round down to 250
-  let p = roundTo250(Math.floor(candidate / 250) * 250);
-
-  // Ensure positive buffer contribution (paycheck < likely)
-  if (p >= range.likely) {
-    p = roundTo250(range.likely - 250);
+  if (range.likely <= 0) {
+    return roundTo250(essentials > 0 ? essentials : 250);
   }
 
-  // Floor at essentials if we have enough room
-  if (p < essentials && essentials <= range.likely) {
+  // Volatility = how wide the lean→strong band is relative to the likely month.
+  const spread = Math.max(0, range.strong - range.lean);
+  const volatility = spread / range.likely;
+
+  // Safety factor: steady income pays ~0.85 of likely; very choppy ~0.55.
+  const safetyFactor = Math.min(0.85, Math.max(0.55, 0.85 - volatility * 0.35));
+
+  let p = roundTo250(range.likely * safetyFactor);
+
+  // Never pay at or above a likely month — buffer contribution must be positive.
+  if (p >= range.likely) p = roundTo250(range.likely - 250);
+
+  // Floor at essentials ONLY if essentials fit under a likely month.
+  // If essentials > likely, return the honest lower number; screen surfaces the state.
+  if (p < essentials && essentials < range.likely) {
     p = roundTo250(essentials);
-    // Make sure paycheck < likely still
-    if (p >= range.likely) {
-      p = roundTo250(range.likely - 250);
-    }
+    if (p >= range.likely) p = roundTo250(range.likely - 250);
   }
 
-  // Never go negative
   if (p <= 0) p = roundTo250(essentials > 0 ? essentials : 250);
-
   return p;
 }
 
@@ -266,10 +264,19 @@ export function computeRunway(bufferBalance: number, essentials: number): number
   return Math.round((bufferBalance / essentials) * 10) / 10;
 }
 
-/** Outlook signal based on tracked-this-month vs expected monthly pace. */
-export function computeOutlook(trackedThisMonth: number, expectedPace: number): Outlook {
-  if (expectedPace <= 0) return 'on track';
-  const ratio = trackedThisMonth / expectedPace;
+/**
+ * Outlook based on tracked-so-far vs the share of a likely month that "should"
+ * have arrived by this point. fractionElapsed is 0..1 (day / days-in-month).
+ */
+export function computeOutlook(
+  trackedThisMonth: number,
+  likelyMonth: number,
+  fractionElapsed: number,
+): Outlook {
+  if (likelyMonth <= 0) return 'on track';
+  const expectedByNow = likelyMonth * Math.min(1, Math.max(0, fractionElapsed));
+  if (expectedByNow <= 0) return 'on track'; // very start of month — don't judge yet
+  const ratio = trackedThisMonth / expectedByNow;
   if (ratio < 0.5) return 'running lean';
   if (ratio > 1.3) return 'strong';
   return 'on track';
@@ -320,6 +327,7 @@ export function detectSignals(
   range: IncomeRange,
   allocation: Allocation,
   trackedThisMonth: number,
+  fractionElapsed: number,
 ): Signal[] {
   const out: Signal[] = [];
 
@@ -331,7 +339,7 @@ export function detectSignals(
     });
   }
 
-  const outlook = computeOutlook(trackedThisMonth, range.likely);
+  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
   if (outlook === 'running lean') {
     out.push({
       kind: 'warning',
