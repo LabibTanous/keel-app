@@ -1,15 +1,181 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Keel design tokens — sourced 1:1 from keel-theme.js ───────────────────── */
+:root {
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui: 'Hanken Grotesk', system-ui, sans-serif;
+  --r-card: 22px;
+  --r-pill: 999px;
+  --pad: 18px;
+}
+
+/* Light theme (Keel's signature warm palette) */
+[data-theme="light"] {
+  --bg: #EBE6DA;
+  --surface: #FBFAF5;
+  --surface-2: #F2EEE2;
+  --ink: #1A201C;
+  --muted: #6B726B;
+  --hairline: rgba(26,32,28,0.10);
+  --pine: #1F4D3A;
+  --pine-soft: #E3EAE2;
+  --clay: #C16A3B;
+  --clay-soft: #F2E2D4;
+  --gold: #A6822F;
+  --gold-soft: #EFE6CE;
+  --mint: #2FA374;
+  --mint-soft: #DBEEE2;
+  --zakat: #2E6E6B;
+  --zakat-soft: #DAE8E6;
+  --on-pine: #F4F1E6;
+  --hero-bg: #1F4D3A;
+  --hero-ink: #F4F1E6;
+  --shadow: 0 1px 2px rgba(26,32,28,0.04), 0 10px 30px rgba(26,32,28,0.07);
+  --shadow-sm: 0 1px 2px rgba(26,32,28,0.05), 0 4px 14px rgba(26,32,28,0.05);
+}
+
+/* Back-palette vars (Spent/rear-view — drained of warmth, NOT dark mode) */
+[data-theme="light"] .stage {
+  --back-surface: #F0F0EC;
+  --back-surface-2: #E7E7E2;
+  --back-ink: #44473F;
+  --back-muted: #9A9C92;
+  --back-hairline: rgba(68,71,63,0.10);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg: #141915;
+  --surface: #1E2620;
+  --surface-2: #27302A;
+  --ink: #ECE7DA;
+  --muted: #8C948B;
+  --hairline: rgba(236,231,218,0.10);
+  --pine: #5AA77F;
+  --pine-soft: #233029;
+  --clay: #D98A57;
+  --clay-soft: #33271F;
+  --gold: #CBA94E;
+  --gold-soft: #302A1B;
+  --mint: #4FBE92;
+  --mint-soft: #1F2E26;
+  --zakat: #56A8A2;
+  --zakat-soft: #1C2B2A;
+  --on-pine: #0E1611;
+  --hero-bg: #213A2D;
+  --hero-ink: #ECE7DA;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 34px rgba(0,0,0,0.5);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4), 0 5px 16px rgba(0,0,0,0.4);
+}
+
+/* Back-palette vars for dark theme */
+[data-theme="dark"] .stage {
+  --back-surface: #1C1F1C;
+  --back-surface-2: #23271F;
+  --back-ink: #B7B9AD;
+  --back-muted: #6E726A;
+  --back-hairline: rgba(183,185,173,0.08);
+}
+
+/* The override — .stage.back swaps surface/ink/muted to the drained set */
+.stage.back {
+  --surface:   var(--back-surface);
+  --surface-2: var(--back-surface-2);
+  --ink:       var(--back-ink);
+  --muted:     var(--back-muted);
+  --hairline:  var(--back-hairline);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
 @layer base {
-  :root {
-    --keel-green: #10b981;
-    --keel-green-dark: #059669;
-    --keel-amber: #f59e0b;
-    --keel-red: #ef4444;
+  html {
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
   }
-  body { font-family: 'Inter', system-ui, sans-serif; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+  }
+  * { box-sizing: border-box; }
+}
+
+/* ── Typography utilities ───────────────────────────────────────────────────── */
+.serif {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.smallcaps {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes keelRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise {
+  opacity: 0;
+  animation: keelRise 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes keelPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+.sk {
+  background: var(--surface-2);
+  border-radius: 9px;
+  animation: keelPulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; opacity: 1; transform: none; }
+  .sk   { animation: none; }
+}
+
+/* ── Range slider (Paycheck screen) ────────────────────────────────────────── */
+.keel-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 26px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+.keel-range::-webkit-slider-runnable-track { background: transparent; height: 26px; }
+.keel-range::-moz-range-track             { background: transparent; height: 26px; }
+.keel-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--pine);
+  border: 3px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.keel-range::-moz-range-thumb {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--pine);
+  border: 3px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
 }
