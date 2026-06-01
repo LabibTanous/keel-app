@@ -4,7 +4,7 @@
  * TenseToggle.tsx — Keel's signature Spent / Spending toggle.
  * TypeScript port of keel_handoff/design_reference/components/TenseToggle.jsx.
  *
- * Sliding thumb: forward = pine, back = var(--back-surface, #DEDED8).
+ * Sliding thumb: forward = pine, back = var(--back-surface).
  * Transition: cubic-bezier(0.34, 1.32, 0.5, 1) — slight overshoot, calm.
  * Uses framer-motion animate for the thumb.
  */
@@ -68,7 +68,7 @@ export function TenseToggle({ tense, onChange }: TenseToggleProps): React.ReactE
           borderRadius: 'var(--r-pill)',
           background: forward
             ? 'var(--pine)'
-            : 'var(--back-surface, #DEDED8)',
+            : 'var(--back-surface)',
           boxShadow: forward
             ? '0 2px 8px rgba(31,77,58,0.28), inset 0 1px 0 rgba(255,255,255,0.12)'
             : '0 1px 2px rgba(0,0,0,0.10)',
