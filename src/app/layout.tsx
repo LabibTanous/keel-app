@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { SessionProvider } from "next-auth/react"
+import { PlanProvider } from "@/lib/store"
+import { GlobalOverlays } from "@/components/keel/GlobalOverlays"
 
 export const metadata: Metadata = {
   title: "Keel — Financial Stability for Irregular Income",
@@ -16,7 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-theme="light">
       <body className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-ui)' }}>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <PlanProvider>
+            {children}
+            {/* Global overlay sheets — triggered via keel:open-add / keel:open-assistant events */}
+            <GlobalOverlays />
+          </PlanProvider>
+        </SessionProvider>
       </body>
     </html>
   )

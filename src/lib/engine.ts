@@ -1,79 +1,58 @@
-export interface IncomeEntry {
-  amount: number;
-  date: string;
-  source?: string;
+/**
+ * engine.ts — Keel's pure, deterministic plan engine.
+ * NO DB, no network, no side effects. All inputs in; derived values out.
+ * Token names and rate map mirror keel-theme.js / ui.jsx (the single sources of truth).
+ */
+
+// ── FX ──────────────────────────────────────────────────────────────────────
+
+export const CCY_RATES: Record<string, number> = {
+  AED: 1,
+  USD: 3.6725,
+  EUR: 3.95,
+  GBP: 4.62,
+  SAR: 0.979,
+};
+
+/** Convert any supported currency to AED. */
+export function toAED(amount: number, currency: string): number {
+  return amount * (CCY_RATES[currency] ?? 1);
 }
 
-export interface TaxProfile {
-  region: string;
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface IncomeItem {
+  amount: number;
   currency: string;
-  currencySymbol: string;
-  reservePercent: number;
-  hasZakat: boolean;
+  date: string;          // ISO 8601 e.g. "2025-06-01"
+  confidence: 'confirmed' | 'likely' | 'possible';
 }
 
-export interface UserProfile {
-  region: string;
-  monthlyEssentials: number;
-  currentSavings: number;
-  payZakat?: boolean;
-  goalName?: string;
-  goalTarget?: number;
-  goalCurrent?: number;
-  goalMonthly?: number;
+export interface Profile {
+  region: string;          // 'AE' | 'SA' | ...
+  currency: string;        // home currency code
+  essentials: number;      // monthly fixed costs in home currency
+  bufferBalance: number;   // current buffer/savings in home currency
+  targetMonths: number;    // target buffer depth (default 3)
+  zakatOn: boolean;
+  zakatableWealth?: number; // current zakatable wealth (gold, cash, etc.)
+  incomes: IncomeItem[];
+  paycheckOverride?: number; // user has manually set a paycheck amount
 }
 
-export interface IncomeStats {
-  monthsAnalyzed: number;
-  monthlyTotals: { month: string; total: number }[];
-  average: number;
-  median: number;
-  floor: number;
-  ceiling: number;
-  min: number;
-  max: number;
-  stdDev: number;
-  volatility: number;
+export interface IncomeRange {
+  lean: number;    // 20th percentile (or min*0.7 if < 3 months)
+  likely: number;  // median
+  strong: number;  // 80th percentile (or max*1.3 if < 3 months)
+  provisional: boolean;
 }
 
-export interface PaycheckRecommendation {
-  amount: number;
-  safetyFactor: number;
-  confidence: 'low' | 'medium' | 'high';
-  coversEssentials: boolean;
-  minProjectedBuffer: number;
-  rationale: string;
-}
-
-export interface Forecast {
-  likely: number;
-  low: number;
-  high: number;
-  typicalLow: number;
-  typicalHigh: number;
-}
-
-export interface PaymentAllocation {
-  gross: number;
+export interface Allocation {
+  rentAndBills: number;
   tax: number;
   zakat: number;
-  available: number;
-}
-
-export interface MonthlyPlan {
-  paycheck: number;
-  forecast: Forecast;
-  offTheTop: { tax: number; zakat: number; goal: number };
-  paycheckBreakdown: { essentials: number; freeToSpend: number };
-  bufferBalance: number;
-  runwayMonths: number;
-}
-
-export interface AffordResult {
-  verdict: 'fits' | 'tight' | 'breaks';
-  label: string;
-  reason: string;
-  freeRemaining: number;
+  buffer: number;
+  spending: number;
 }
 
 export interface Signal {
@@ -82,9 +61,46 @@ export interface Signal {
   detail: string;
 }
 
-const round = (n: number) => Math.round(n);
-const roundTo = (n: number, step: number) => Math.round(n / step) * step;
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+export type Outlook = 'running lean' | 'on track' | 'strong';
+export type AffordVerdict = 'fits' | 'dips' | 'break';
+export type TaxStatus = 'clear' | 'near' | 'over';
+
+export interface AffordResult {
+  verdict: AffordVerdict;
+  label: string;
+  reason: string;
+  freeRemaining: number;
+}
+
+// ── TAX REGIONS ──────────────────────────────────────────────────────────────
+
+export const TAX_REGIONS: Record<string, {
+  vatThreshold: number;
+  vatRate: number;
+  ctThreshold: number;
+  ctRate: number;
+  currency: string;
+  label: string;
+}> = {
+  AE: {
+    vatThreshold: 375_000,
+    vatRate: 0.05,
+    ctThreshold: 1_000_000,
+    ctRate: 0.09,
+    currency: 'AED',
+    label: 'UAE',
+  },
+  SA: {
+    vatThreshold: 375_000,
+    vatRate: 0.15,
+    ctThreshold: Infinity,
+    ctRate: 0,
+    currency: 'SAR',
+    label: 'Saudi Arabia',
+  },
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function percentile(sortedAsc: number[], p: number): number {
   if (sortedAsc.length === 0) return 0;
@@ -96,142 +112,414 @@ function percentile(sortedAsc: number[], p: number): number {
   return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (idx - lo);
 }
 
-function monthKey(iso: string): string {
-  return iso.slice(0, 7);
+function roundTo250(n: number): number {
+  return Math.round(n / 250) * 250;
 }
 
-export function monthLabel(key: string): string {
-  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const m = parseInt(key.slice(5, 7), 10);
-  return names[m - 1] ?? key;
-}
+// ── Core computations ────────────────────────────────────────────────────────
 
-export function groupByMonth(entries: IncomeEntry[]): { month: string; total: number }[] {
-  const map = new Map<string, number>();
-  for (const e of entries) {
-    const k = monthKey(e.date);
-    map.set(k, (map.get(k) ?? 0) + e.amount);
+/**
+ * Group income items by YYYY-MM, converting each to AED first.
+ * Returns a record of { 'YYYY-MM': totalAED }.
+ */
+export function groupByMonth(incomes: IncomeItem[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const inc of incomes) {
+    const key = inc.date.slice(0, 7); // 'YYYY-MM'
+    const aed = toAED(inc.amount, inc.currency);
+    map[key] = (map[key] ?? 0) + aed;
   }
-  return [...map.entries()]
-    .map(([month, total]) => ({ month, total }))
-    .sort((a, b) => a.month.localeCompare(b.month));
+  return map;
 }
 
-export function analyzeIncome(entries: IncomeEntry[], lookbackMonths = 6): IncomeStats {
-  const all = groupByMonth(entries);
-  const recent = all.slice(-lookbackMonths);
-  const totals = recent.map(r => r.total);
-  const n = totals.length;
+/**
+ * Compute lean / likely / strong income range from monthly totals.
+ * If < 3 months of data, mark provisional and widen the band.
+ */
+export function computeRange(monthlyTotals: Record<string, number>): IncomeRange {
+  const values = Object.values(monthlyTotals).sort((a, b) => a - b);
+  const n = values.length;
+
+  if (n === 0) {
+    return { lean: 0, likely: 0, strong: 0, provisional: true };
+  }
+
+  if (n < 3) {
+    const minVal = values[0];
+    const maxVal = values[n - 1];
+    const likely = values[Math.floor(n / 2)];
+    return {
+      lean: minVal * 0.7,
+      likely,
+      strong: maxVal * 1.3,
+      provisional: true,
+    };
+  }
+
+  return {
+    lean: percentile(values, 0.2),
+    likely: percentile(values, 0.5),
+    strong: percentile(values, 0.8),
+    provisional: false,
+  };
+}
+
+/**
+ * Recommend a steady paycheck:
+ * - <= likely
+ * - >= essentials (if possible)
+ * - leaves positive buffer contribution
+ * - rounded to nearest 250
+ */
+export function computePaycheck(
+  range: IncomeRange,
+  essentials: number,
+  bufferBalance: number,
+): number {
+  // Start from likely, step down until buffer contribution is positive
+  // Buffer contribution = likely - paycheck > 0 means paycheck < likely
+  // We want: paycheck <= likely AND paycheck >= essentials (if feasible)
+  const candidate = Math.min(range.likely, range.likely - 1); // just under likely
+  // Round down to 250
+  let p = roundTo250(Math.floor(candidate / 250) * 250);
+
+  // Ensure positive buffer contribution (paycheck < likely)
+  if (p >= range.likely) {
+    p = roundTo250(range.likely - 250);
+  }
+
+  // Floor at essentials if we have enough room
+  if (p < essentials && essentials <= range.likely) {
+    p = roundTo250(essentials);
+    // Make sure paycheck < likely still
+    if (p >= range.likely) {
+      p = roundTo250(range.likely - 250);
+    }
+  }
+
+  // Never go negative
+  if (p <= 0) p = roundTo250(essentials > 0 ? essentials : 250);
+
+  return p;
+}
+
+/**
+ * Compute allocation buckets. Must sum to paycheck.
+ */
+export function computeAllocation(
+  paycheck: number,
+  essentials: number,
+  region: string,
+  zakatOn: boolean,
+  zakatableWealth: number,
+  bufferBalance: number,
+  targetMonths: number,
+): Allocation {
+  const tax_region = TAX_REGIONS[region];
+
+  // Tax: estimate monthly CT set-aside on annualised paycheck if above threshold
+  let tax = 0;
+  if (tax_region) {
+    const annualised = paycheck * 12;
+    if (annualised > tax_region.ctThreshold) {
+      tax = Math.round((annualised - tax_region.ctThreshold) * tax_region.ctRate / 12);
+    }
+  }
+
+  // Zakat: monthly share of annual zakat obligation
+  const zakat = zakatOn ? Math.round((zakatableWealth * 0.025) / 12) : 0;
+
+  // Buffer contribution: move toward target
+  const targetBuffer = essentials * targetMonths;
+  const deficit = Math.max(0, targetBuffer - bufferBalance);
+  // Contribute proportionally; don't exceed what's left after essentials+tax+zakat
+  const available = paycheck - essentials - tax - zakat;
+  const bufferContrib = available > 0 ? Math.round(Math.min(deficit / targetMonths, available)) : 0;
+
+  // Spending = remainder
+  const spending = paycheck - essentials - tax - zakat - bufferContrib;
+
+  // Sanity: if spending < 0, reduce buffer contribution
+  if (spending < 0) {
+    const adjustedBuffer = Math.max(0, bufferContrib + spending);
+    return {
+      rentAndBills: essentials,
+      tax,
+      zakat,
+      buffer: adjustedBuffer,
+      spending: paycheck - essentials - tax - zakat - adjustedBuffer,
+    };
+  }
+
+  return {
+    rentAndBills: essentials,
+    tax,
+    zakat,
+    buffer: bufferContrib,
+    spending,
+  };
+}
+
+/** Runway in months to 1 decimal. */
+export function computeRunway(bufferBalance: number, essentials: number): number {
+  if (essentials <= 0) return 0;
+  return Math.round((bufferBalance / essentials) * 10) / 10;
+}
+
+/** Outlook signal based on tracked-this-month vs expected monthly pace. */
+export function computeOutlook(trackedThisMonth: number, expectedPace: number): Outlook {
+  if (expectedPace <= 0) return 'on track';
+  const ratio = trackedThisMonth / expectedPace;
+  if (ratio < 0.5) return 'running lean';
+  if (ratio > 1.3) return 'strong';
+  return 'on track';
+}
+
+/**
+ * Afford verdict.
+ * fits: cost <= spendingLeft
+ * dips: cost <= spendingLeft + (bufferBalance - safeFloor)
+ * break: otherwise
+ */
+export function computeAfford(
+  cost: number,
+  spendingLeft: number,
+  bufferBalance: number,
+  safeFloor: number,
+): AffordResult {
+  const freeFromBuffer = Math.max(0, bufferBalance - safeFloor);
+
+  if (cost <= spendingLeft) {
+    return {
+      verdict: 'fits',
+      label: 'Fits the plan',
+      reason: `Comes out of this month's free-to-spend. You'd have ${Math.round(spendingLeft - cost).toLocaleString('en-US')} AED left and your plan is untouched.`,
+      freeRemaining: spendingLeft - cost,
+    };
+  }
+
+  if (cost <= spendingLeft + freeFromBuffer) {
+    return {
+      verdict: 'dips',
+      label: 'Possible — dips into buffer',
+      reason: `It's ${Math.round(cost - spendingLeft).toLocaleString('en-US')} AED over your free-to-spend, so it'd come partly from your buffer. Doable, but it slows your runway.`,
+      freeRemaining: spendingLeft - cost,
+    };
+  }
+
+  return {
+    verdict: 'break',
+    label: 'Would break the plan',
+    reason: `This exceeds your free-to-spend and safe buffer combined. Worth waiting for a strong month or saving toward it.`,
+    freeRemaining: spendingLeft - cost,
+  };
+}
+
+/** Detect signals from the current plan state. */
+export function detectSignals(
+  range: IncomeRange,
+  allocation: Allocation,
+  trackedThisMonth: number,
+): Signal[] {
+  const out: Signal[] = [];
+
+  if (range.provisional) {
+    out.push({
+      kind: 'tip',
+      title: 'Plan is provisional',
+      detail: 'Log at least 3 months of income for a reliable range. Current estimates are widened to be safe.',
+    });
+  }
+
+  const outlook = computeOutlook(trackedThisMonth, range.likely / 4); // rough weekly pace
+  if (outlook === 'running lean') {
+    out.push({
+      kind: 'warning',
+      title: 'Running lean this month',
+      detail: 'Income tracked so far is well below your usual pace. Your paycheck still holds — that\'s what the buffer is for — but ease off non-essentials.',
+    });
+  }
+
+  if (allocation.spending < 0) {
+    out.push({
+      kind: 'warning',
+      title: 'Essentials exceed paycheck',
+      detail: 'Your fixed costs are higher than the paycheck your income can safely sustain. Trimming a fixed cost frees real breathing room.',
+    });
+  }
+
+  if (outlook === 'strong') {
+    out.push({
+      kind: 'tip',
+      title: 'Strong month — bank it',
+      detail: 'You\'re tracking above your usual pace. A great moment to send extra toward the buffer or a goal.',
+    });
+  }
+
+  if (out.length === 0) {
+    out.push({
+      kind: 'success',
+      title: 'You\'re on track',
+      detail: 'Buffer\'s healthy and your plan holds. Nothing to do — let it run.',
+    });
+  }
+
+  const rank: Record<Signal['kind'], number> = { warning: 0, tip: 1, success: 2 };
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind]).slice(0, 4);
+}
+
+/** Tax registration status: clear / near / over */
+export function statusOf(limit: number, turnover: number): TaxStatus {
+  if (turnover >= limit) return 'over';
+  if (turnover >= limit * 0.7) return 'near';
+  return 'clear';
+}
+
+// ── Legacy compatibility shims ────────────────────────────────────────────────
+// Kept so existing db.ts / tax-profiles.ts / API routes still compile.
+
+export interface TaxProfile {
+  region: string;
+  currency: string;
+  currencySymbol: string;
+  reservePercent: number;
+  hasZakat: boolean;
+}
+
+/** @deprecated — use Profile instead */
+export interface UserProfile {
+  region: string;
+  monthlyEssentials: number;
+  currentSavings: number;
+  payZakat?: boolean;
+  goalName?: string;
+  goalTarget?: number;
+  goalCurrent?: number;
+  goalMonthly?: number;
+}
+
+/** @deprecated — use IncomeItem instead */
+export interface IncomeEntry {
+  amount: number;
+  date: string;
+  source?: string;
+}
+
+/** @deprecated — use groupByMonth + computeRange instead */
+export function analyzeIncome(
+  entries: IncomeEntry[],
+  _lookbackMonths = 6,
+): {
+  monthsAnalyzed: number;
+  monthlyTotals: { month: string; total: number }[];
+  average: number;
+  median: number;
+  floor: number;
+  ceiling: number;
+  min: number;
+  max: number;
+  stdDev: number;
+  volatility: number;
+} {
+  // Convert legacy IncomeEntry to IncomeItem (no currency, assume AED)
+  const items: IncomeItem[] = entries.map(e => ({
+    amount: e.amount,
+    currency: 'AED',
+    date: e.date,
+    confidence: 'confirmed' as const,
+  }));
+  const monthly = groupByMonth(items);
+  const sorted = Object.values(monthly).sort((a, b) => a - b);
+  const n = sorted.length;
   if (n === 0) {
     return { monthsAnalyzed: 0, monthlyTotals: [], average: 0, median: 0, floor: 0, ceiling: 0, min: 0, max: 0, stdDev: 0, volatility: 0 };
   }
-  const sorted = [...totals].sort((a, b) => a - b);
-  const average = totals.reduce((s, x) => s + x, 0) / n;
-  const variance = totals.reduce((s, x) => s + (x - average) ** 2, 0) / n;
+  const average = sorted.reduce((s, x) => s + x, 0) / n;
+  const variance = sorted.reduce((s, x) => s + (x - average) ** 2, 0) / n;
   const stdDev = Math.sqrt(variance);
+  function pct(arr: number[], p: number) {
+    const idx = (arr.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    if (lo === hi) return arr[lo];
+    return arr[lo] + (arr[hi] - arr[lo]) * (idx - lo);
+  }
   return {
     monthsAnalyzed: n,
-    monthlyTotals: recent,
-    average: round(average),
-    median: round(percentile(sorted, 0.5)),
-    floor: round(percentile(sorted, 0.25)),
-    ceiling: round(percentile(sorted, 0.75)),
+    monthlyTotals: Object.entries(monthly)
+      .map(([month, total]) => ({ month, total }))
+      .sort((a, b) => a.month.localeCompare(b.month)),
+    average: Math.round(average),
+    median: Math.round(pct(sorted, 0.5)),
+    floor: Math.round(pct(sorted, 0.25)),
+    ceiling: Math.round(pct(sorted, 0.75)),
     min: sorted[0],
     max: sorted[n - 1],
-    stdDev: round(stdDev),
+    stdDev: Math.round(stdDev),
     volatility: average > 0 ? stdDev / average : 0,
   };
 }
 
-export function recommendPaycheck(stats: IncomeStats, profile: UserProfile, startingBuffer = 0): PaycheckRecommendation {
+/** @deprecated — use computePaycheck instead */
+export function recommendPaycheck(
+  stats: ReturnType<typeof analyzeIncome>,
+  profile: UserProfile,
+  startingBuffer = 0,
+): { amount: number; safetyFactor: number; confidence: string; coversEssentials: boolean; minProjectedBuffer: number; rationale: string } {
   if (stats.monthsAnalyzed === 0) {
-    return { amount: 0, safetyFactor: 0, confidence: 'low', coversEssentials: false, minProjectedBuffer: startingBuffer, rationale: 'Not enough income history yet. Log a few payments and Keel will propose a safe paycheck.' };
+    return { amount: 0, safetyFactor: 0, confidence: 'low', coversEssentials: false, minProjectedBuffer: startingBuffer, rationale: 'Not enough income history.' };
   }
-  const safetyFactor = clamp(0.85 - stats.volatility * 0.35, 0.55, 0.85);
-  const amount = roundTo(stats.median * safetyFactor, 250);
-  const sim = simulateBuffer(stats.monthlyTotals, amount, startingBuffer);
-  const minBuffer = Math.min(...sim.map(s => s.buffer));
-  const coversEssentials = amount >= profile.monthlyEssentials;
-  let confidence: PaycheckRecommendation['confidence'] = 'low';
-  if (stats.monthsAnalyzed >= 6 && stats.volatility < 0.4) confidence = 'high';
-  else if (stats.monthsAnalyzed >= 3) confidence = 'medium';
-  let rationale = `Based on ${stats.monthsAnalyzed} months, your typical (median) month is ${stats.median.toLocaleString()}. Keel suggests paying yourself ${amount.toLocaleString()} — ${Math.round(safetyFactor * 100)}% of that — so fat months refill the buffer that carries the lean ones.`;
-  if (!coversEssentials) {
-    rationale += ` ⚠ This is below your stated essentials (${profile.monthlyEssentials.toLocaleString()}). Your income may be too low or too volatile to cover essentials from a steady wage yet.`;
-  }
-  if (minBuffer < 0) {
-    rationale += ` Note: across your history the buffer dips to ${minBuffer.toLocaleString()} at its lowest.`;
-  }
-  return { amount, safetyFactor, confidence, coversEssentials, minProjectedBuffer: round(minBuffer), rationale };
+  const safetyFactor = Math.min(0.85, Math.max(0.55, 0.85 - stats.volatility * 0.35));
+  const amount = Math.round(stats.median * safetyFactor / 250) * 250;
+  return { amount, safetyFactor, confidence: stats.monthsAnalyzed >= 6 ? 'high' : stats.monthsAnalyzed >= 3 ? 'medium' : 'low', coversEssentials: amount >= profile.monthlyEssentials, minProjectedBuffer: startingBuffer, rationale: `Suggested paycheck: ${amount}` };
 }
 
-export function simulateBuffer(monthlyTotals: { month: string; total: number }[], paycheck: number, startingBuffer = 0): { month: string; income: number; paycheck: number; buffer: number }[] {
-  let bal = startingBuffer;
-  return monthlyTotals.map(m => {
-    bal += m.total - paycheck;
-    return { month: m.month, income: m.total, paycheck, buffer: round(bal) };
-  });
-}
-
-export function forecastNextMonth(stats: IncomeStats): Forecast {
-  return { likely: stats.median, low: stats.min, high: stats.max, typicalLow: stats.floor, typicalHigh: stats.ceiling };
-}
-
-export function allocatePayment(amount: number, tax: TaxProfile, payZakat: boolean): PaymentAllocation {
-  const taxReserve = round(amount * (tax.reservePercent / 100));
-  const zakat = payZakat && tax.hasZakat ? round(amount * 0.025) : 0;
-  return { gross: amount, tax: taxReserve, zakat, available: amount - taxReserve - zakat };
-}
-
-export function buildMonthlyPlan(stats: IncomeStats, profile: UserProfile, tax: TaxProfile, paycheck: number): MonthlyPlan {
-  const forecast = forecastNextMonth(stats);
-  const taxReserve = round(forecast.likely * (tax.reservePercent / 100));
-  const zakat = profile.payZakat && tax.hasZakat ? round(forecast.likely * 0.025) : 0;
+/** @deprecated — use computeAllocation / computeRange / computePaycheck instead */
+export function buildMonthlyPlan(
+  stats: ReturnType<typeof analyzeIncome>,
+  profile: UserProfile,
+  tax: TaxProfile,
+  paycheck: number,
+): {
+  paycheck: number;
+  forecast: { likely: number; low: number; high: number; typicalLow: number; typicalHigh: number };
+  offTheTop: { tax: number; zakat: number; goal: number };
+  paycheckBreakdown: { essentials: number; freeToSpend: number };
+  bufferBalance: number;
+  runwayMonths: number;
+} {
+  const taxReserve = Math.round(stats.median * (tax.reservePercent / 100));
+  const zakat = profile.payZakat && tax.hasZakat ? Math.round(stats.median * 0.025) : 0;
   const goal = profile.goalMonthly ?? 0;
   const essentials = Math.min(profile.monthlyEssentials, paycheck);
   const freeToSpend = Math.max(0, paycheck - essentials);
   return {
     paycheck,
-    forecast,
+    forecast: { likely: stats.median, low: stats.min, high: stats.max, typicalLow: stats.floor, typicalHigh: stats.ceiling },
     offTheTop: { tax: taxReserve, zakat, goal },
     paycheckBreakdown: { essentials, freeToSpend },
     bufferBalance: profile.currentSavings,
-    runwayMonths: runwayMonths(profile.currentSavings, profile.monthlyEssentials),
+    runwayMonths: profile.monthlyEssentials > 0 ? Math.round((profile.currentSavings / profile.monthlyEssentials) * 10) / 10 : 0,
   };
 }
 
-export function runwayMonths(savings: number, monthlyExpenses: number): number {
-  if (monthlyExpenses <= 0) return Infinity;
-  return Math.round((savings / monthlyExpenses) * 10) / 10;
-}
-
-export function canAfford(cost: number, freeToSpend: number, buffer: number): AffordResult {
-  if (cost <= freeToSpend) {
-    return { verdict: 'fits', label: 'Fits the plan', reason: `Comes out of this month's free-to-spend. You'd have ${(freeToSpend - cost).toLocaleString()} left and your plan is untouched.`, freeRemaining: freeToSpend - cost };
-  }
-  if (cost <= freeToSpend + buffer) {
-    return { verdict: 'tight', label: 'Possible — dips into buffer', reason: `It's ${(cost - freeToSpend).toLocaleString()} over your free-to-spend, so it'd come from your buffer. Doable, but it slows your goal.`, freeRemaining: freeToSpend - cost };
-  }
-  return { verdict: 'breaks', label: 'Would break the plan', reason: `This is more than your free-to-spend and buffer can absorb. Worth waiting for a strong month.`, freeRemaining: freeToSpend - cost };
-}
-
-export function detectSignals(stats: IncomeStats, plan: MonthlyPlan, currentMonthIncome: number, profile: UserProfile): Signal[] {
+/** @deprecated — use detectSignals (new signature) */
+export function detectSignalsLegacy(
+  stats: ReturnType<typeof analyzeIncome>,
+  plan: ReturnType<typeof buildMonthlyPlan>,
+  currentMonthIncome: number,
+  profile: UserProfile,
+): Signal[] {
   const out: Signal[] = [];
-  if (plan.runwayMonths < 1.5) {
-    out.push({ kind: 'warning', title: 'Runway is short', detail: `If income stopped, you'd have about ${plan.runwayMonths} months of essentials covered. Building the buffer should come first.` });
-  }
-  if (currentMonthIncome > 0 && currentMonthIncome < stats.average * 0.5) {
-    out.push({ kind: 'warning', title: 'This month is running lean', detail: `You're well below your usual. Your steady paycheck still holds — that's what the buffer is for — but ease off non-essentials.` });
-  }
-  if (profile.monthlyEssentials > plan.paycheck) {
-    out.push({ kind: 'warning', title: 'Fixed costs are high', detail: `Your essentials are larger than the paycheck your income can safely sustain. Trimming a fixed cost frees real breathing room.` });
-  }
-  if (currentMonthIncome > stats.average * 1.4) {
-    out.push({ kind: 'tip', title: 'Strong month — bank it', detail: `You're well above average. A good moment to send extra toward your goal instead of letting it leak into spending.` });
-  }
-  if (out.length === 0 && plan.runwayMonths >= 3) {
-    out.push({ kind: 'success', title: "You're on track", detail: `Buffer's healthy and your plan holds. Nothing to do — let it run.` });
-  }
-  const rank = { warning: 0, tip: 1, success: 2 } as const;
-  return out.sort((a, b) => rank[a.kind] - rank[b.kind]).slice(0, 4);
+  if (plan.runwayMonths < 1.5) out.push({ kind: 'warning', title: 'Runway is short', detail: `About ${plan.runwayMonths} months of essentials covered.` });
+  if (currentMonthIncome > 0 && currentMonthIncome < stats.average * 0.5) out.push({ kind: 'warning', title: 'Running lean', detail: 'Well below your usual pace.' });
+  if (profile.monthlyEssentials > plan.paycheck) out.push({ kind: 'warning', title: 'Fixed costs are high', detail: 'Essentials exceed paycheck.' });
+  if (currentMonthIncome > stats.average * 1.4) out.push({ kind: 'tip', title: 'Strong month', detail: 'Bank the extra.' });
+  if (out.length === 0 && plan.runwayMonths >= 3) out.push({ kind: 'success', title: "You're on track", detail: "Nothing to do — let it run." });
+  return out.sort((a, b) => ({ warning: 0, tip: 1, success: 2 }[a.kind] - { warning: 0, tip: 1, success: 2 }[b.kind])).slice(0, 4);
+}
+
+/** @deprecated */
+export function forecastNextMonth(stats: ReturnType<typeof analyzeIncome>) {
+  return { likely: stats.median, low: stats.min, high: stats.max, typicalLow: stats.floor, typicalHigh: stats.ceiling };
 }

@@ -6,7 +6,7 @@ import {
   analyzeIncome,
   recommendPaycheck,
   buildMonthlyPlan,
-  detectSignals,
+  detectSignalsLegacy as detectSignals,
   forecastNextMonth,
 } from '@/lib/engine';
 
