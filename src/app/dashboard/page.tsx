@@ -1,111 +1,74 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
-import { getUser, getIncomeEntries, getOrCreateLogToken } from "@/lib/db"
-import DashboardClient from "./DashboardClient"
-import { rollingAverage, currentMonthTotal, runwayMonths, incomeMode, safeBudget, groupByMonth } from "@/lib/finance"
-import { calculateReserve, TAX_PROFILES } from "@/lib/tax-profiles"
-import { generateAdvice } from "@/lib/advice"
-import type { IncomeEntry } from "@/types"
+import { getUser, getIncomeEntries, getOrCreateLogToken, rowToUserProfile, rowToIncomeEntry } from "@/lib/db"
+import { getTaxProfile } from "@/lib/tax-profiles"
+import {
+  analyzeIncome,
+  recommendPaycheck,
+  buildMonthlyPlan,
+  detectSignals,
+  forecastNextMonth,
+} from "@/lib/engine"
+import DashboardShell from "./DashboardShell"
 
 export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/")
 
-  const [rawUser, entries, logToken] = await Promise.all([
-    getUser(session.user.id),
-    getIncomeEntries(session.user.id),
-    getOrCreateLogToken(session.user.id),
+  const userId = session.user.id
+  const [rawUser, incomeRows, logToken] = await Promise.all([
+    getUser(userId),
+    getIncomeEntries(userId),
+    getOrCreateLogToken(userId),
   ])
 
   if (!rawUser) redirect("/")
 
-  const user = rawUser as {
-    id: string
-    name: string | null
-    email: string
-    image: string | null
-    region_code: string | null
-    income_type: string | null
-    is_muslim: boolean | null
-    monthly_expenses: number | string | null
-    savings_balance: number | string | null
-    onboarding_complete: boolean | null
-  }
-
+  const user = rawUser as Record<string, unknown>
   if (!user.onboarding_complete) redirect("/onboarding")
 
-  const typedEntries = entries as unknown as IncomeEntry[]
-  const regionCode = user.region_code ?? "AE"
+  const profile = rowToUserProfile(user)
+  const entries = (incomeRows as Record<string, unknown>[]).map(rowToIncomeEntry)
+  const tax = getTaxProfile(profile.region)
 
-  const avg = rollingAverage(typedEntries, 6)
-  const currentMonth = currentMonthTotal(typedEntries)
-  const { reservePercent, reserveAmount: rawReserve } = calculateReserve(
-    avg, regionCode, user.is_muslim ?? false
-  )
-  const reserveBalance = rawReserve * 6
-  const runway = runwayMonths(
-    Number(user.savings_balance ?? 0),
-    Number(user.monthly_expenses ?? 1)
-  )
-  const mode = incomeMode(currentMonth, avg)
-  const safe = safeBudget(avg, reservePercent)
+  const stats = analyzeIncome(entries, 6)
+  const recommendation = recommendPaycheck(stats, profile, profile.currentSavings)
+  const paycheck = user.paycheck_amount != null
+    ? Number(user.paycheck_amount)
+    : recommendation.amount
 
-  const monthlyChart = Object.entries(groupByMonth(typedEntries))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-6)
-    .map(([month, amount]) => ({ month, amount }))
+  const plan = buildMonthlyPlan(stats, profile, tax, paycheck)
 
-  // Source breakdown — top income sources
-  const sourceMap: Record<string, number> = {}
-  for (const e of typedEntries) {
-    sourceMap[e.source] = (sourceMap[e.source] ?? 0) + Number(e.amount)
-  }
-  const sourceBreakdown = Object.entries(sourceMap)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 6)
-    .map(([source, amount]) => ({ source, amount }))
+  const nowPrefix = new Date().toISOString().slice(0, 7)
+  const currentMonthIncome = entries
+    .filter(e => e.date.startsWith(nowPrefix))
+    .reduce((s, e) => s + e.amount, 0)
 
-  // Generate advice
-  const profile = TAX_PROFILES[regionCode]
-  const advice = generateAdvice({
-    runwayMonths: runway,
-    rollingAverage: avg,
-    currentMonthIncome: currentMonth,
-    reservePercent,
-    reserveBalance,
-    monthlyExpenses: Number(user.monthly_expenses ?? 0),
-    savingsBalance: Number(user.savings_balance ?? 0),
-    incomeEntryCount: typedEntries.length,
-    incomeType: user.income_type ?? "freelancer",
-    isMuslim: user.is_muslim ?? false,
-    hasZakat: profile?.hasZakat ?? false,
-  })
+  const signals = detectSignals(stats, plan, currentMonthIncome, profile)
+  const forecast = forecastNextMonth(stats)
+
+  // Recent entries for back-view (typed for client)
+  const recentEntries = (incomeRows as Record<string, unknown>[]).slice(0, 15).map(r => ({
+    id: r.id as string,
+    source: (r.source as string) ?? "Income",
+    amount: Number(r.amount),
+    date: r.date as string,
+  }))
 
   return (
-    <DashboardClient
+    <DashboardShell
       user={{
-        name: user.name,
-        email: user.email,
-        image: user.image,
-        regionCode,
-        incomeType: user.income_type ?? "freelancer",
-        isMuslim: user.is_muslim ?? false,
-        monthlyExpenses: Number(user.monthly_expenses ?? 0),
-        savingsBalance: Number(user.savings_balance ?? 0),
+        name: (user.name as string) ?? null,
+        email: user.email as string,
+        image: (user.image as string) ?? null,
+        regionCode: profile.region,
+        isMuslim: profile.payZakat ?? false,
+        monthlyExpenses: profile.monthlyEssentials,
+        savingsBalance: profile.currentSavings,
       }}
-      dashboardData={{
-        currentMonthIncome: currentMonth,
-        rollingAverage: avg,
-        safeBudget: safe,
-        reservePercent,
-        reserveBalance,
-        runwayMonths: runway,
-        mode,
-        recentEntries: typedEntries.slice(0, 10),
-        monthlyChart,
-        sourceBreakdown,
-        advice,
-      }}
+      plan={{ stats, recommendation, plan, signals, forecast, paycheck }}
+      tax={tax}
+      recentEntries={recentEntries}
       logToken={logToken}
     />
   )
