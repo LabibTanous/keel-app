@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Keel — States gallery</title>
+<script src="keel-theme.js"></script>
+<style>
+  html, body { margin: 0; }
+  body {
+    background: #E7E3D8;
+    background-image: radial-gradient(120% 60% at 50% 0%, #EFEBE0 0%, #DCD8CC 100%);
+    font-family: 'Hanken Grotesk', system-ui, sans-serif;
+    color: #1A201C; min-height: 100vh; padding: 40px 32px 80px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  .ttl { font-family: 'Fraunces', Georgia, serif; font-size: 40px; letter-spacing: -0.5px; margin: 0; }
+  .sub { font-size: 15px; color: #6B726B; margin: 10px 0 0; max-width: 640px; line-height: 1.5; }
+  .topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 34px; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: rgba(0,0,0,0.06); border-radius: 999px; padding: 4px; }
+  .seg button { border: 0; background: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+    padding: 8px 16px; border-radius: 999px; color: #6B726B; }
+  .seg button[aria-pressed="true"] { background: #FBFAF5; color: #1A201C; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .sect { font-family: 'Fraunces', Georgia, serif; font-size: 23px; margin: 38px 0 4px; }
+  .sect-sub { font-size: 13px; color: #6B726B; margin: 0 0 18px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 26px 22px; }
+  .tile { width: 189px; }
+  .frame { width: 189px; height: 384px; border-radius: 22px; overflow: hidden; position: relative;
+    box-shadow: 0 10px 30px rgba(26,32,28,0.14), 0 1px 3px rgba(26,32,28,0.08); background: #cfcbc0; }
+  .frame iframe { width: 440px; height: 894px; border: 0; transform: scale(0.43); transform-origin: top left;
+    pointer-events: none; }
+  .frame a.hit { position: absolute; inset: 0; z-index: 2; }
+  .cap { font-size: 12.5px; font-weight: 600; margin-top: 11px; color: #1A201C; }
+  .cap span { display: block; font-weight: 400; color: #6B726B; font-size: 11.5px; margin-top: 1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1 class="ttl">Keel — every state</h1>
+      <p class="sub">Real screens, each preset to a state — empty, loading, the honest edge cases. Tap any tile to open it live. Use the toolbar Tweaks on a screen to explore further.</p>
+    </div>
+    <div class="seg" id="theme">
+      <button data-theme="light" aria-pressed="true">Light</button>
+      <button data-theme="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <div id="sections"></div>
+</div>
+
+<script>
+const SCREENS = [
+  { name: 'Home', sub: 'The forward dashboard — signal, range, allocation, outflows.', url: 'keel-home.html', states: [
+    { label: 'On track', note: 'normal — forward', hash: 'opensOn=forward&outlook=on track' },
+    { label: 'Running lean', note: 'warning signal first', hash: 'outlook=running lean' },
+    { label: 'Looking back', note: 'the "Spent" view', hash: 'opensOn=back' },
+    { label: 'No plan yet', note: 'new user — empty', hash: 'hasPlan=false' },
+    { label: 'Loading', note: 'skeleton', hash: 'loading=true' },
+  ]},
+  { name: 'Set your paycheck', sub: 'The honest banding and history.', url: 'keel-paycheck.html', states: [
+    { label: 'Full history', note: 'normal', hash: 'history=full' },
+    { label: 'Low confidence', note: 'provisional — thin history', hash: 'history=thin' },
+    { label: 'No income', note: 'empty', hash: 'history=none' },
+    { label: 'Loading', note: 'skeleton', hash: 'loading=true' },
+  ]},
+  { name: 'Can I afford this?', sub: 'The three honest verdicts.', url: 'keel-afford.html', states: [
+    { label: 'Ask', note: 'empty — examples', hash: 'demo=ask' },
+    { label: 'Fits the plan', note: 'calm', hash: 'demo=fits' },
+    { label: 'Dips into buffer', note: 'honest', hash: 'demo=dips' },
+    { label: 'Would break it', note: 'honest, not alarming', hash: 'demo=break' },
+    { label: 'Loading', note: 'skeleton', hash: 'demo=loading' },
+  ]},
+  { name: "What's coming", sub: 'Expected income, multi-currency, received.', url: 'keel-coming.html', states: [
+    { label: 'Has income', note: 'normal', hash: 'hasItems=true' },
+    { label: 'Nothing expected', note: 'empty', hash: 'hasItems=false' },
+    { label: 'Loading', note: 'skeleton', hash: 'loading=true' },
+  ]},
+  { name: 'Saving', sub: 'Goal trajectory, big payments, tax entry.', url: 'keel-goal.html', states: [
+    { label: 'On track', note: 'normal', hash: 'progress=on track&taxStatus=approaching' },
+    { label: 'A bit behind', note: 'goal slipping', hash: 'progress=behind' },
+    { label: 'Tax due', note: 'tax entry surfaced', hash: 'taxStatus=due' },
+    { label: 'No goal', note: 'empty', hash: 'hasGoal=false' },
+    { label: 'Loading', note: 'skeleton', hash: 'loading=true' },
+  ]},
+  { name: 'Tax & registrations', sub: 'Region + threshold aware.', url: 'keel-tax.html', states: [
+    { label: 'Approaching', note: 'early heads-up', hash: 'region=United Arab Emirates&turnover=approaching' },
+    { label: 'Over the line', note: 'now due', hash: 'turnover=high (over CT)' },
+    { label: 'Nothing applies', note: 'region without rules', hash: 'region=Egypt' },
+    { label: 'Loading', note: 'skeleton', hash: 'loading=true' },
+  ]},
+  { name: 'Onboarding', sub: 'The setup wizard, step by step.', url: 'keel-onboard.html', states: [
+    { label: 'Region', note: 'step 1', hash: 'startStep=0' },
+    { label: 'Essentials', note: 'step 2', hash: 'startStep=1' },
+    { label: 'Seed income', note: 'step 4', hash: 'startStep=3' },
+    { label: 'Ready', note: 'provisional paycheck', hash: 'startStep=4' },
+  ]},
+];
+
+let theme = 'light';
+const BASE = location.href.replace(/keel-states\.html.*$/, '');
+function build() {
+  const root = document.getElementById('sections');
+  root.innerHTML = '';
+  SCREENS.forEach(scr => {
+    const h = document.createElement('div');
+    const head = document.createElement('div'); head.className = 'sect'; head.textContent = scr.name;
+    const sub = document.createElement('div'); sub.className = 'sect-sub'; sub.textContent = scr.sub;
+    const grid = document.createElement('div'); grid.className = 'grid';
+    scr.states.forEach(st => {
+      const tile = document.createElement('div'); tile.className = 'tile';
+      const frame = document.createElement('div'); frame.className = 'frame';
+      const ifr = document.createElement('iframe');
+      const hash = encodeURI((st.hash ? st.hash + '&' : '') + 'theme=' + theme);
+      ifr.src = BASE + scr.url + '#' + hash;
+      const hit = document.createElement('a'); hit.className = 'hit'; hit.href = BASE + scr.url + '#' + hash; hit.title = 'Open ' + scr.name + ' — ' + st.label;
+      frame.appendChild(ifr); frame.appendChild(hit);
+      const cap = document.createElement('div'); cap.className = 'cap';
+      cap.innerHTML = st.label + '<span>' + st.note + '</span>';
+      tile.appendChild(frame); tile.appendChild(cap); grid.appendChild(tile);
+    });
+    h.appendChild(head); h.appendChild(sub); h.appendChild(grid); root.appendChild(h);
+  });
+}
+document.getElementById('theme').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  theme = b.dataset.theme;
+  [...document.querySelectorAll('#theme button')].forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.body.style.background = theme === 'dark' ? '#0F120F' : '#E7E3D8';
+  document.body.style.backgroundImage = theme === 'dark'
+    ? 'radial-gradient(120% 60% at 50% 0%, #1a201b 0%, #0d100d 100%)'
+    : 'radial-gradient(120% 60% at 50% 0%, #EFEBE0 0%, #DCD8CC 100%)';
+  document.body.style.color = theme === 'dark' ? '#ECE7DA' : '#1A201C';
+  build();
+});
+build();
+</script>
+</body>
+</html>
