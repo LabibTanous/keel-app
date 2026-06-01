@@ -355,8 +355,8 @@ export default function ProfilePage() {
                 value={`AED ${profile.essentials.toLocaleString('en-US')}`}
                 onClick={() => openSheet({
                   title: 'Monthly essentials',
-                  input: true, unit: 'AED', rec: '6200', recLabel: 'AED 6,200',
-                  placeholder: 'e.g. 6200',
+                  input: true, unit: 'AED', rec: String(profile.essentials), recLabel: `AED ${profile.essentials.toLocaleString('en-US')}`,
+                  placeholder: 'e.g. 3000',
                   fmt: (v) => v,
                 }, String(profile.essentials))}
               />

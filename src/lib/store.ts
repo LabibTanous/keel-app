@@ -164,7 +164,17 @@ function saveState(state: State): void {
 const PlanContext = createContext<PlanStore | null>(null);
 
 export function PlanProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadState);
+  // Always start with DEMO_PROFILE so SSR and first client render match.
+  // After mount, hydrate from localStorage to avoid React hydration mismatch.
+  const [state, dispatch] = useReducer(reducer, { profile: DEMO_PROFILE, trackedThisMonth: 0 });
+
+  // On first client mount, load persisted state (runs only in the browser)
+  useEffect(() => {
+    const loaded = loadState();
+    dispatch({ type: 'SET_PROFILE', payload: loaded.profile });
+    if (loaded.trackedThisMonth) dispatch({ type: 'SET_TRACKED', payload: loaded.trackedThisMonth });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist on every change
   useEffect(() => {
