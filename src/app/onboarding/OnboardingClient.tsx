@@ -33,7 +33,7 @@ type RegionEntry = typeof ONBOARD_REGIONS[number];
 interface IncomeRow {
   amt: string;
   ccy: string;
-  recurring: boolean;
+  recurring: boolean | null;
   months?: number;
   dayOfMonth?: number;
   date?: string;
@@ -66,9 +66,7 @@ const INITIAL_DATA: ObData = {
   subscriptions: '',
   otherExpenses: '',
   incomes: [
-    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
-    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
-    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
+    { amt: '', ccy: 'AED', recurring: null, months: 6, dayOfMonth: 1 },
   ],
   email: '',
   password: '',
@@ -388,7 +386,7 @@ function SeedIncomeStep({
   }
 
   function add() {
-    set({ incomes: [...rows, { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 }] });
+    set({ incomes: [...rows, { amt: '', ccy: 'AED', recurring: null, months: 6, dayOfMonth: 1 }] });
   }
 
   return (
@@ -419,8 +417,8 @@ function SeedIncomeStep({
                   fontFamily: 'var(--font-ui)',
                   fontSize: 12.5,
                   fontWeight: 600,
-                  background: r.recurring ? 'var(--pine)' : 'var(--surface-2)',
-                  color: r.recurring ? 'var(--on-pine)' : 'var(--muted)',
+                  background: r.recurring === true ? 'var(--pine)' : 'var(--surface-2)',
+                  color: r.recurring === true ? 'var(--on-pine)' : 'var(--muted)',
                 }}
               >
                 Regular
@@ -436,14 +434,14 @@ function SeedIncomeStep({
                   fontFamily: 'var(--font-ui)',
                   fontSize: 12.5,
                   fontWeight: 600,
-                  background: !r.recurring ? 'var(--pine)' : 'var(--surface-2)',
-                  color: !r.recurring ? 'var(--on-pine)' : 'var(--muted)',
+                  background: r.recurring === false ? 'var(--pine)' : 'var(--surface-2)',
+                  color: r.recurring === false ? 'var(--on-pine)' : 'var(--muted)',
                 }}
               >
                 One-off
               </button>
             </div>
-            {r.recurring ? (
+            {r.recurring === true && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>How many months?</div>
@@ -493,7 +491,8 @@ function SeedIncomeStep({
                   <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>th of each month</div>
                 </div>
               </div>
-            ) : (
+            )}
+            {r.recurring === false && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>When did you receive it?</div>
                 <input

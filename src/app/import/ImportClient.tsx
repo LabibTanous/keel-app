@@ -113,11 +113,6 @@ function UploadStep({ months, addMonth, onAnalyze }: { months: string[]; addMont
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Drop a statement here</div>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>PDF or CSV from your bank app</div>
-        <div style={{
-          marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontSize: 11.5, fontWeight: 600, color: 'var(--gold)',
-          background: 'var(--gold-soft)', padding: '5px 12px', borderRadius: 999,
-        }}>Coming soon — bank connect</div>
       </div>
 
       <div>
@@ -445,7 +440,8 @@ export function ImportClient() {
   };
 
   const back = () => {
-    if (step === 'choose' || step === 'done') router.push('/profile');
+    if (step === 'done') router.push('/dashboard');
+    else if (step === 'choose') router.back();
     else if (step === 'review') setStep('upload');
     else setStep('choose');
   };
