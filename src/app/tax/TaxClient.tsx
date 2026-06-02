@@ -119,7 +119,7 @@ function ProgressiveTaxCard({ region, turnover }: { region: string; turnover: nu
             {approxAED(annualAED)} a year ({approxAED(monthlyAED)}/month), on roughly {cur(localIncome, ccy)} of net professional income.
           </div>
           <Disclaimer style={{ marginTop: 9 }}>
-            Estimate — not tax advice. Brackets &amp; FX are static ({r.label} 2025, rates as of {FX_AS_OF}).
+            Estimated on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice. Brackets &amp; FX are static ({r.label} 2025, rates as of {FX_AS_OF}).
           </Disclaimer>
         </div>
       )}

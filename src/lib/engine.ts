@@ -592,10 +592,11 @@ export function interpret(
         taxMeaning = `You're approaching the AED 1M Corporate Tax line (${Math.round((taxTurnover / UAE_CT_REGISTRATION_TURNOVER) * 100)}% there) — nothing due yet, just so it doesn't surprise you.`;
       }
     } else {
-      // progressive (Egypt/Jordan)
+      // progressive (Egypt/Jordan) — estimate is on GROSS income, so flag that
+      // actual tax is likely lower after deductible business expenses.
       const annual = estimateAnnualTax(taxTurnover, region);
       if (annual > 0) {
-        taxMeaning = `Based on your income, an estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr in income tax — set aside so filing season isn't a shock.`;
+        taxMeaning = `Estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr income tax on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice.`;
       }
     }
   }
