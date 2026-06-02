@@ -270,7 +270,16 @@ export function ComingClient() {
   // Recurring confirmed items (from paycheck-type income set up in onboarding) are
   // already factored into the paycheck calculation — exclude them from the Expected
   // and In-plan views to avoid double-counting.
+  //
+  // This dedup only makes sense for a *monthly* salary cadence: repeated equal amounts
+  // are a recurring paycheck. For quarterly/project/irregular freelancers, distinct
+  // project payments may coincidentally share an amount (false positive) or recur
+  // legitimately, and every payment should stay visible in the timeline. So we only
+  // apply the heuristic for 'monthly' (or undefined, for backward compatibility).
+  const applyRecurringDedup = profile.incomePattern === undefined || profile.incomePattern === 'monthly';
+
   const recurringConfirmedAmounts = (() => {
+    if (!applyRecurringDedup) return new Set<number>();
     const counts: Record<number, number> = {};
     profile.incomes.forEach((inc) => {
       if (inc.confidence === 'confirmed') {

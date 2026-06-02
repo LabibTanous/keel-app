@@ -102,11 +102,25 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     ? profile.paycheckOverride
     : computePaycheck(range, profile.essentials, profile.bufferBalance);
 
-  // YTD tax turnover: sum all incomes in current calendar year
+  // YTD tax turnover: sum all incomes in current calendar year.
+  // VAT applies only to freelance/business revenue, not employed salary.
   const thisYear = new Date().getFullYear().toString();
-  const taxTurnover = profile.incomes
+  let taxTurnover = profile.incomes
     .filter(i => i.date.startsWith(thisYear))
     .reduce((sum, i) => sum + toAED(i.amount, i.currency), 0);
+
+  // Adjust turnover by employment type. We don't tag individual income items as
+  // salary vs freelance (IncomeItem has no source field), so we handle this at the
+  // profile level:
+  // - 'employed': pure employee — salary is not VAT-taxable revenue, so turnover is 0.
+  // - 'employed_freelance': MIXED income we can't split without per-item tagging.
+  //   We conservatively count ALL income, which overestimates turnover and warns the
+  //   user early about the VAT threshold — the safe direction to err. (LIMITATION: a
+  //   future fix should tag each IncomeItem with its source to split salary out.)
+  // - 'sole_trader' | 'company' | undefined: all income is freelance/business — count all.
+  if (profile.employmentType === 'employed') {
+    taxTurnover = 0;
+  }
 
   const allocation = computeAllocation(
     rawPaycheck,

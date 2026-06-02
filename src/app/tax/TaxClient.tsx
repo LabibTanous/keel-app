@@ -28,6 +28,15 @@ const REGION_FLAG: Record<string, string> = {
 
 // ── Threshold rules (derived from TAX_REGIONS in engine.ts) ──────────────────
 
+// UAE Corporate Tax (2023+ regime): 0% on taxable income up to AED 375,000,
+// 9% above it. CT is levied on PROFIT, but Keel only tracks turnover — so we
+// apply a rough, conservative profit-margin proxy to turnover to estimate it.
+// 30% is a more defensible default for a freelancer / small company than a
+// higher figure. This is a rough estimate only, never audited profit.
+const ASSUMED_PROFIT_MARGIN = 0.30;
+const CT_FREE_THRESHOLD = 375_000;
+const CT_RATE = 0.09;
+
 interface Threshold {
   id: string;
   name: string;
@@ -56,7 +65,11 @@ const THRESHOLD_RULES: Record<string, Threshold[]> = {
       clearMsg: "Doesn't apply yet — you're under the AED 1M turnover line for sole freelancers.",
       nearMsg: "Approaching the AED 1M line where Corporate Tax starts to apply.",
       overMsg: "Now applies — register, then file 9% on profit above AED 375k.",
-      estimate: (t, ccy) => `≈ ${cur(Math.max(0, (t * 0.45 - 375_000)) * 0.09, ccy)} a year, very roughly, on profit above AED 375k.`,
+      estimate: (t, ccy) => {
+        const estimatedProfit = t * ASSUMED_PROFIT_MARGIN;
+        const ct = Math.max(0, estimatedProfit - CT_FREE_THRESHOLD) * CT_RATE;
+        return `≈ ${cur(ct, ccy)} a year, very roughly, on profit above AED 375k (assuming ~30% margin).`;
+      },
     },
   ],
   SA: [

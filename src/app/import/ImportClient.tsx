@@ -334,40 +334,96 @@ function ReviewStep({ transactions, onDone }: { transactions: ParsedTx[]; onDone
 
 // ── Step: Manual entry ─────────────────────────────────────────────────────────
 
+// Manual entry is grouped. Income rows feed addIncome; fixed-cost + subscription
+// rows roll up into the profile's monthly `essentials` figure.
+const MANUAL_GROUPS = [
+  { header: 'Typical income',      kind: 'income' as const,     rows: ['Main client work', 'Side gigs'] },
+  { header: 'Fixed monthly costs', kind: 'essential' as const,  rows: ['Rent', 'Utilities', 'Phone & internet'] },
+  { header: 'Subscriptions',       kind: 'essential' as const,  rows: ['Software & tools', 'Streaming'] },
+  { header: 'Set aside',           kind: 'ignore' as const,     rows: ['Taxes (%)', 'Savings'] },
+];
+
 function ManualStep({ onDone }: { onDone: () => void }) {
-  const group = (header: string, rows: string[]) => (
-    <div key={header} style={{ marginBottom: 18 }}>
-      <div className="smallcaps" style={{ margin: '0 4px 9px' }}>{header}</div>
-      <Card style={{ padding: '2px var(--pad)' }}>
-        {rows.map((r, idx) => (
-          <div key={r} style={{ display: 'flex', alignItems: 'center', minHeight: 50, padding: '12px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none' }}>
-            <span style={{ flex: 1, fontSize: 15, color: 'var(--ink)' }}>{r}</span>
-            <input
-              aria-label="Amount"
-              placeholder="0"
-              className="focus-ring"
-              style={{ width: 90, textAlign: 'right', border: 'none', background: 'none', fontFamily: 'var(--font-ui)', fontSize: 15, color: 'var(--ink)' }}
-            />
+  const { addIncome, setProfile, profile } = usePlan();
+  // Per-row amounts keyed as "<groupIndex>-<rowIndex>".
+  const [values, setValues] = useState<Record<string, string>>({});
+  // Extra custom rows appended per group via "+ Add another".
+  const [extraRows, setExtraRows] = useState<Record<number, string[]>>({});
+
+  const setValue = (key: string, raw: string) =>
+    setValues(prev => ({ ...prev, [key]: raw }));
+
+  const addRow = (groupIdx: number) =>
+    setExtraRows(prev => {
+      const current = prev[groupIdx] ?? [];
+      return { ...prev, [groupIdx]: [...current, `Other ${current.length + 1}`] };
+    });
+
+  const save = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    let incomeTotal = 0;
+    let essentialsTotal = 0;
+
+    MANUAL_GROUPS.forEach((g, gi) => {
+      const allRows = [...g.rows, ...(extraRows[gi] ?? [])];
+      allRows.forEach((_, ri) => {
+        const n = parseFloat(values[`${gi}-${ri}`] ?? '');
+        if (!n || isNaN(n) || n <= 0) return;
+        if (g.kind === 'income') incomeTotal += n;
+        else if (g.kind === 'essential') essentialsTotal += n;
+      });
+    });
+
+    if (incomeTotal > 0) {
+      addIncome({ amount: incomeTotal, currency: 'AED', date: today, confidence: 'confirmed' });
+    }
+    if (essentialsTotal > 0) {
+      setProfile({ ...profile, essentials: profile.essentials + essentialsTotal });
+    }
+    onDone();
+  };
+
+  const group = (g: (typeof MANUAL_GROUPS)[number], gi: number) => {
+    const allRows = [...g.rows, ...(extraRows[gi] ?? [])];
+    return (
+      <div key={g.header} style={{ marginBottom: 18 }}>
+        <div className="smallcaps" style={{ margin: '0 4px 9px' }}>{g.header}</div>
+        <Card style={{ padding: '2px var(--pad)' }}>
+          {allRows.map((r, idx) => {
+            const key = `${gi}-${idx}`;
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', minHeight: 50, padding: '12px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none' }}>
+                <span style={{ flex: 1, fontSize: 15, color: 'var(--ink)' }}>{r}</span>
+                <input
+                  aria-label={`${r} amount`}
+                  type="number"
+                  inputMode="decimal"
+                  value={values[key] ?? ''}
+                  onChange={e => setValue(key, e.target.value)}
+                  placeholder="0"
+                  className="focus-ring"
+                  style={{ width: 90, textAlign: 'right', border: 'none', background: 'none', fontFamily: 'var(--font-ui)', fontSize: 15, color: 'var(--ink)' }}
+                />
+              </div>
+            );
+          })}
+          <div style={{ padding: '12px 0', borderTop: '1px solid var(--hairline)' }}>
+            <button type="button" onClick={() => addRow(gi)} style={{ background: 'none', border: 'none', color: 'var(--pine)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
+              + Add another
+            </button>
           </div>
-        ))}
-        <div style={{ padding: '12px 0', borderTop: '1px solid var(--hairline)' }}>
-          <button type="button" style={{ background: 'none', border: 'none', color: 'var(--pine)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)', padding: 0 }}>
-            + Add another
-          </button>
-        </div>
-      </Card>
-    </div>
-  );
+        </Card>
+      </div>
+    );
+  };
+
   return (
     <div>
       <p style={{ margin: '0 0 18px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>
         Fill in what you know — you can always refine it later.
       </p>
-      {group('Typical income', ['Main client work', 'Side gigs'])}
-      {group('Fixed monthly costs', ['Rent', 'Utilities', 'Phone & internet'])}
-      {group('Subscriptions', ['Software & tools', 'Streaming'])}
-      {group('Set aside', ['Taxes (%)', 'Savings'])}
-      <button type="button" onClick={onDone} style={{
+      {MANUAL_GROUPS.map((g, gi) => group(g, gi))}
+      <button type="button" onClick={save} style={{
         width: '100%', padding: '15px', borderRadius: 14, marginTop: 4, cursor: 'pointer',
         background: 'var(--pine)', color: 'var(--on-pine)', border: 'none',
         fontFamily: 'var(--font-ui)', fontSize: 15.5, fontWeight: 700,
