@@ -82,6 +82,13 @@ interface ObData {
   email: string;
   password: string;
   authError: string;
+  incomePattern: 'monthly' | 'quarterly' | 'project' | 'irregular' | '';
+  targetMonths: number;
+  vatRegistered: boolean | null;
+  annualRevenue: string;
+  employmentType: 'sole_trader' | 'company' | 'employed_freelance' | 'employed' | '';
+  multiCurrency: boolean | null;
+  dependants: number;
 }
 
 const INITIAL_DATA: ObData = {
@@ -107,6 +114,13 @@ const INITIAL_DATA: ObData = {
   email: '',
   password: '',
   authError: '',
+  incomePattern: '',
+  targetMonths: 3,
+  vatRegistered: null,
+  annualRevenue: '',
+  employmentType: '',
+  multiCurrency: null,
+  dependants: 0,
 };
 
 // ── Shared input styles ──────────────────────────────────────────────────────
@@ -323,6 +337,42 @@ function RegionStep({
           );
         })}
       </div>
+
+      <div style={{ marginTop: 22 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>How do you work?</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            { v: 'sole_trader', label: 'Sole trader' },
+            { v: 'company', label: 'Company / LLC' },
+            { v: 'employed_freelance', label: 'Employed + freelancing' },
+            { v: 'employed', label: 'Employed only' },
+          ].map(({ v, label }) => (
+            <button key={v} type="button"
+              onClick={() => set({ employmentType: v as ObData['employmentType'] })}
+              style={{
+                padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                background: data.employmentType === v ? 'var(--pine)' : 'var(--surface-2)',
+                color: data.employmentType === v ? 'var(--on-pine)' : 'var(--muted)',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>Dependants (spouse, children)</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button type="button"
+            onClick={() => set({ dependants: Math.max(0, data.dependants - 1) })}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--hairline)', background: 'var(--surface-2)', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>−</button>
+          <span className="serif" style={{ fontSize: 28, color: 'var(--ink)', minWidth: 30, textAlign: 'center' }}>{data.dependants}</span>
+          <button type="button"
+            onClick={() => set({ dependants: Math.min(10, data.dependants + 1) })}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--hairline)', background: 'var(--surface-2)', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>+</button>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>people relying on your income</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -394,6 +444,26 @@ function EssentialsStep({
       {/* Subscriptions — dynamic list */}
       <div style={{ marginBottom: 14 }}>
         <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 8 }}>Subscriptions</div>
+
+        {/* Quick-add chips */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Tap to add common ones:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {UAE_SUBS.filter(s => !data.subscriptionsList.some(r => r.name === s.name)).map((s) => (
+              <button
+                key={s.name}
+                type="button"
+                onClick={() => set({ subscriptionsList: [...data.subscriptionsList, { name: s.name, amt: s.amt, billingDay: '1' }] })}
+                style={{
+                  padding: '5px 12px', borderRadius: 999, border: '1px solid var(--hairline)',
+                  background: 'var(--surface)', cursor: 'pointer',
+                  fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
+                }}
+              >{s.name} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>AED {s.amt}</span></button>
+            ))}
+          </div>
+        </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {data.subscriptionsList.map((r, i) => (
             <div key={r.name + '-' + i} style={{
@@ -440,6 +510,36 @@ function EssentialsStep({
       <ObField label="Other fixed costs">
         <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} placeholder="0 (optional)" />
       </ObField>
+
+      {(data.regionCode === 'AE' || data.regionCode === 'SA') && (
+        <div style={{ marginBottom: 14 }}>
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>VAT registration</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: data.vatRegistered === true ? 10 : 0 }}>
+            {[{ v: false, label: 'Not registered' }, { v: true, label: 'VAT registered' }].map(({ v, label }) => (
+              <button key={String(v)} type="button"
+                onClick={() => set({ vatRegistered: v })}
+                style={{
+                  padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                  fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                  background: data.vatRegistered === v ? 'var(--pine)' : 'var(--surface-2)',
+                  color: data.vatRegistered === v ? 'var(--on-pine)' : 'var(--muted)',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+          {data.vatRegistered === false && (
+            <p style={{ margin: '6px 2px 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Keel will track your revenue toward the AED 375,000 threshold.
+            </p>
+          )}
+          {data.vatRegistered === true && (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Est. annual revenue (for VAT filing)</div>
+              <ObAmount value={data.annualRevenue} onChange={(v) => set({ annualRevenue: v })} ccy={data.ccy} placeholder="0 (optional)" />
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -488,6 +588,25 @@ function SavingsStep({
       <ObField label="Other">
         <ObAmount value={data.savingsOther} onChange={(v) => set({ savingsOther: v })} ccy={data.ccy} placeholder="0 (optional)" />
       </ObField>
+
+      <div style={{ marginBottom: 14 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>How many months cushion do you want?</div>
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--muted)' }}>Keel keeps this as your safety net before you touch spending.</p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[3, 6, 12, 18].map((m) => (
+            <button key={m} type="button"
+              onClick={() => set({ targetMonths: m })}
+              style={{
+                padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                background: data.targetMonths === m ? 'var(--pine)' : 'var(--surface-2)',
+                color: data.targetMonths === m ? 'var(--on-pine)' : 'var(--muted)',
+              }}
+            >{m} mo</button>
+          ))}
+        </div>
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -660,6 +779,23 @@ function GoalsStep({
 
 const UPCOMING_SUGGESTIONS = ['School fees', 'Car service', 'Travel', 'Insurance', 'Equipment'];
 
+// ── UAE common subscriptions for quick-add chips ──────────────────────────────
+
+const UAE_SUBS = [
+  { name: 'Netflix', amt: '50' },
+  { name: 'Spotify', amt: '20' },
+  { name: 'Shahid', amt: '20' },
+  { name: 'Disney+', amt: '35' },
+  { name: 'Apple TV+', amt: '25' },
+  { name: 'YouTube Premium', amt: '25' },
+  { name: 'Adobe CC', amt: '250' },
+  { name: 'Microsoft 365', amt: '40' },
+  { name: 'iCloud+', amt: '15' },
+  { name: 'Anghami', amt: '15' },
+  { name: 'Talabat Pro', amt: '49' },
+  { name: 'ChatGPT Plus', amt: '70' },
+];
+
 function UpcomingStep({
   data,
   set,
@@ -813,6 +949,46 @@ function SeedIncomeStep({
         title="Your last few payments"
         sub="Keel reads your real history to suggest a steady wage. Add a few — the more you log, the sharper it gets."
       />
+
+      <div style={{ marginBottom: 20 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>How do you typically get paid?</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            { v: 'monthly', label: 'Regular monthly' },
+            { v: 'quarterly', label: 'Quarterly' },
+            { v: 'project', label: 'Per project' },
+            { v: 'irregular', label: 'Irregular / varies' },
+          ].map(({ v, label }) => (
+            <button key={v} type="button"
+              onClick={() => set({ incomePattern: v as ObData['incomePattern'] })}
+              style={{
+                padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                background: data.incomePattern === v ? 'var(--pine)' : 'var(--surface-2)',
+                color: data.incomePattern === v ? 'var(--on-pine)' : 'var(--muted)',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>Do you regularly earn in other currencies?</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[{ v: true, label: 'Yes — USD/EUR/GBP' }, { v: false, label: 'AED only' }].map(({ v, label }) => (
+            <button key={String(v)} type="button"
+              onClick={() => set({ multiCurrency: v })}
+              style={{
+                padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+                background: data.multiCurrency === v ? 'var(--pine)' : 'var(--surface-2)',
+                color: data.multiCurrency === v ? 'var(--on-pine)' : 'var(--muted)',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {rows.map((r, i) => (
           <div key={`income-row-${r.ccy}-${i}`}>
@@ -1062,7 +1238,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
   ).length;
   const provisional = filled < 3;
 
-  const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes);
+  const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes, data.incomePattern);
 
   const essentials =
     (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
@@ -1079,7 +1255,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
       ? computePaycheck(range, essentials, bufferBalance)
       : 0;
 
-  const previewAlloc = computeAllocation(suggestedPaycheck, essentials, 'AE', false, 0, bufferBalance, 3);
+  const previewAlloc = computeAllocation(suggestedPaycheck, essentials, data.regionCode || 'AE', false, 0, bufferBalance, data.targetMonths);
 
   return (
     <div style={{ paddingTop: 8 }}>
@@ -1293,9 +1469,13 @@ function computeBufferBalance(data: ObData): number {
 
 // ── Income row expansion ──────────────────────────────────────────────────────
 
-function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
+function expandIncomeRows(rows: IncomeRow[], incomePattern: ObData['incomePattern'] = ''): IncomeItem[] {
   const today = new Date();
   const items: IncomeItem[] = [];
+
+  // Monthly pattern with just 1-2 data points can be treated as confirmed
+  // Irregular/project patterns stay provisional even with multiple data points
+  const patternBoostsConfidence = incomePattern === 'monthly';
 
   for (const r of rows) {
     const amt = parseFloat(r.amt.replace(/[^0-9.]/g, ''));
@@ -1315,11 +1495,13 @@ function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
       }
     } else {
       const date = r.date || today.toISOString().slice(0, 10);
+      // Monthly-pattern one-offs get a confidence boost
+      const confidence: IncomeItem['confidence'] = patternBoostsConfidence ? 'confirmed' : 'likely';
       items.push({
         amount: amt,
         currency: r.ccy,
         date,
-        confidence: 'likely',
+        confidence,
       });
     }
   }
@@ -1382,7 +1564,7 @@ export function OnboardingClient(): React.ReactElement {
       return;
     }
 
-    const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes);
+    const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes, data.incomePattern);
 
     const essentials =
       (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
@@ -1393,14 +1575,20 @@ export function OnboardingClient(): React.ReactElement {
 
     const bufferBalance = computeBufferBalance(data);
     const zakatOn = data.regionCode === 'AE' || data.regionCode === 'SA';
+
+    // Zakat nisab adjustment: dependants reduce the zakatable portion slightly
+    // Each dependant represents ~AED 3,000/year in personal allowance
+    const dependantAllowance = data.dependants * 3000;
+    const zakatableWealth = zakatOn ? Math.max(0, bufferBalance - dependantAllowance) : 0;
+
     const profile: Profile = {
       region: data.regionCode,
       currency: data.ccy,
       essentials,
       bufferBalance,
-      targetMonths: 3,
+      targetMonths: data.targetMonths,
       zakatOn,
-      zakatableWealth: zakatOn ? bufferBalance : 0,
+      zakatableWealth,
       incomes: incomeItems,
     };
 
