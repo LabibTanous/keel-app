@@ -269,3 +269,50 @@ export const deleteExpenseEntry = mutation({
     await ctx.db.delete(args.entryId);
   },
 });
+
+// ── Email / password auth ──────────────────────────────────────────────────────
+
+export const getUserByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("keel_users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+  },
+});
+
+export const setUserPassword = mutation({
+  args: { userId: v.string(), passwordHash: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) throw new Error(`User ${args.userId} not found`);
+    await ctx.db.patch(existing._id, { passwordHash: args.passwordHash });
+  },
+});
+
+export const createUserWithPassword = mutation({
+  args: {
+    userId: v.string(),
+    email: v.string(),
+    passwordHash: v.string(),
+    name: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (existing) throw new Error("Email already registered");
+    return await ctx.db.insert("keel_users", {
+      userId: args.userId,
+      email: args.email,
+      name: args.name,
+      image: null,
+      passwordHash: args.passwordHash,
+    });
+  },
+});

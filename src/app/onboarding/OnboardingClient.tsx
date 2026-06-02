@@ -50,6 +50,9 @@ interface ObData {
   subscriptions: string;
   otherExpenses: string;
   incomes: IncomeRow[];
+  email: string;
+  password: string;
+  authError: string;
 }
 
 const INITIAL_DATA: ObData = {
@@ -67,6 +70,9 @@ const INITIAL_DATA: ObData = {
     { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
     { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
   ],
+  email: '',
+  password: '',
+  authError: '',
 };
 
 // ── Shared input styles ──────────────────────────────────────────────────────
@@ -613,7 +619,7 @@ function SeedIncomeStep({
 
 // ── Step 5: Ready ─────────────────────────────────────────────────────────────
 
-function ReadyStep({ data }: { data: ObData }) {
+function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) => void }) {
   const filled = data.incomes.filter(
     (r) => parseInt(r.amt.replace(/[^0-9]/g, ''), 10) > 0,
   ).length;
@@ -639,7 +645,49 @@ function ReadyStep({ data }: { data: ObData }) {
   const previewAlloc = computeAllocation(suggestedPaycheck, essentials, 'AE', false, 0, bufferBalance, 3);
 
   return (
-    <div style={{ textAlign: 'center', paddingTop: 8 }}>
+    <div style={{ paddingTop: 8 }}>
+      {/* Account creation */}
+      <div style={{ marginBottom: 28 }}>
+        <div className="serif" style={{ fontSize: 22, color: 'var(--ink)', marginBottom: 6 }}>
+          Create your account
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--muted)' }}>
+          Save your plan — sign in from any device.
+        </p>
+
+        {/* Email */}
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 7 }}>Email</div>
+          <input
+            aria-label="Email"
+            type="email"
+            value={data.email}
+            onChange={(e) => set({ email: e.target.value, authError: '' })}
+            placeholder="you@example.com"
+            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none', boxSizing: 'border-box' }}
+          />
+        </label>
+
+        {/* Password */}
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 7 }}>Password</div>
+          <input
+            aria-label="Password"
+            type="password"
+            value={data.password}
+            onChange={(e) => set({ password: e.target.value, authError: '' })}
+            placeholder="6+ characters"
+            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none', boxSizing: 'border-box' }}
+          />
+        </label>
+
+        {data.authError && (
+          <div style={{ fontSize: 13, color: 'var(--clay)', marginTop: -4 }}>{data.authError}</div>
+        )}
+      </div>
+
+      {/* Plan preview */}
+      <div style={{ textAlign: 'center' }}>
       <div
         style={{
           width: 60,
@@ -768,6 +816,7 @@ function ReadyStep({ data }: { data: ObData }) {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -810,7 +859,7 @@ function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
 // ── Wizard shell ──────────────────────────────────────────────────────────────
 
 type StepProps = { data: ObData; set: (patch: Partial<ObData>) => void };
-function ReadyWrapper(props: StepProps) { return <ReadyStep data={props.data} />; }
+function ReadyWrapper(props: StepProps) { return <ReadyStep data={props.data} set={props.set} />; }
 
 const OB_STEPS = ['region', 'essentials', 'savings', 'income', 'ready'] as const;
 type StepKey = typeof OB_STEPS[number];
@@ -847,6 +896,22 @@ export function OnboardingClient(): React.ReactElement {
   }
 
   async function commitAndNavigate() {
+    // Validate email + password
+    const email = data.email.trim().toLowerCase();
+    const password = data.password;
+    if (!email) {
+      set({ authError: 'Please enter your email address.' });
+      return;
+    }
+    if (!email.includes('@')) {
+      set({ authError: 'Please enter a valid email address.' });
+      return;
+    }
+    if (!password || password.length < 6) {
+      set({ authError: 'Password must be at least 6 characters.' });
+      return;
+    }
+
     const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes);
 
     const essentials =
@@ -872,7 +937,21 @@ export function OnboardingClient(): React.ReactElement {
     const userId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    await signIn('anonymous', { userId, redirect: false });
+
+    // Register account
+    const regRes = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, userId }),
+    });
+    if (!regRes.ok) {
+      const regData = await regRes.json();
+      set({ authError: regData.error || 'Registration failed. Please try again.' });
+      return;
+    }
+
+    // Sign in via NextAuth email-password provider
+    await signIn('email-password', { email, password, redirect: false });
 
     setProfile(profile);
     router.push('/paycheck');

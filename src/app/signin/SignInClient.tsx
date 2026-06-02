@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * SignInClient.tsx — Returning user sign-in via Keel code (log_token).
+ * SignInClient.tsx — Returning user sign-in via email + password.
  */
 
 import React, { useState } from 'react';
@@ -11,28 +11,30 @@ import { KeelMark } from '@/components/keel/icons';
 
 export function SignInClient(): React.ReactElement {
   const router = useRouter();
-  const [code, setCode]       = useState('');
-  const [error, setError]     = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   async function handleSignIn() {
-    const trimmed = code.trim();
-    if (!trimmed) { setError('Enter your Keel code.'); return; }
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) { setError('Enter your email address.'); return; }
+    if (!password) { setError('Enter your password.'); return; }
     setError('');
     setLoading(true);
     try {
       const res = await fetch('/api/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logToken: trimmed }),
+        body: JSON.stringify({ email: trimmedEmail, password }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Account not found. Check your code.');
+        setError(data.error || 'Sign in failed.');
         setLoading(false);
         return;
       }
-      await signIn('anonymous', { userId: data.userId, redirect: false });
+      await signIn('email-password', { email: trimmedEmail, password, redirect: false });
       router.push('/dashboard');
     } catch {
       setError('Something went wrong — try again.');
@@ -51,7 +53,6 @@ export function SignInClient(): React.ReactElement {
     fontSize: 16,
     outline: 'none',
     boxSizing: 'border-box',
-    letterSpacing: 0.5,
   };
 
   return (
@@ -98,21 +99,35 @@ export function SignInClient(): React.ReactElement {
           Welcome back.
         </div>
         <p style={{ margin: '0 0 32px', fontSize: 14.5, color: 'var(--muted)', lineHeight: 1.5 }}>
-          Enter the Keel code from your profile to sign back in.
+          Sign in with your email and password.
         </p>
 
         <div style={{ marginBottom: 12 }}>
-          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 7 }}>Your Keel code</div>
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 7 }}>Email</div>
           <input
-            aria-label="Keel code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
+            aria-label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(''); }}
             onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-            placeholder="e.g. kl_abc123xyz"
+            placeholder="you@example.com"
             style={inputStyle}
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 7 }}>Password</div>
+          <input
+            aria-label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+            placeholder="Your password"
+            style={inputStyle}
           />
         </div>
 
@@ -140,10 +155,6 @@ export function SignInClient(): React.ReactElement {
         >
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
-
-        <p style={{ marginTop: 24, fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, textAlign: 'center' }}>
-          Find your Keel code in <strong>Profile → Keel code</strong>.
-        </p>
       </div>
 
       <div style={{ paddingBottom: 40, textAlign: 'center' }}>

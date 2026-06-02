@@ -21,9 +21,11 @@ export default defineSchema({
     goalCurrent: v.optional(v.number()),
     goalMonthly: v.optional(v.number()),
     profileJson: v.optional(v.string()),
+    passwordHash: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
-    .index("by_logToken", ["logToken"]),
+    .index("by_logToken", ["logToken"])
+    .index("by_email", ["email"]),
 
   keel_income_entries: defineTable({
     userId: v.string(),
