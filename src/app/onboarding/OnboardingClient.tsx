@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { usePlan } from '@/lib/store';
@@ -33,6 +34,9 @@ interface IncomeRow {
   amt: string;
   ccy: string;
   recurring: boolean;
+  months?: number;
+  dayOfMonth?: number;
+  date?: string;
 }
 
 interface ObData {
@@ -59,9 +63,9 @@ const INITIAL_DATA: ObData = {
   subscriptions: '',
   otherExpenses: '',
   incomes: [
-    { amt: '', ccy: 'AED', recurring: true },
-    { amt: '', ccy: 'AED', recurring: true },
-    { amt: '', ccy: 'AED', recurring: true },
+    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
+    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
+    { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 },
   ],
 };
 
@@ -378,7 +382,7 @@ function SeedIncomeStep({
   }
 
   function add() {
-    set({ incomes: [...rows, { amt: '', ccy: 'AED', recurring: true }] });
+    set({ incomes: [...rows, { amt: '', ccy: 'AED', recurring: true, months: 6, dayOfMonth: 1 }] });
   }
 
   return (
@@ -433,6 +437,77 @@ function SeedIncomeStep({
                 One-off
               </button>
             </div>
+            {r.recurring ? (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>How many months?</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[3, 6, 12, 18].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => update(i, { months: m })}
+                        style={{
+                          padding: '4px 11px',
+                          borderRadius: 999,
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-ui)',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: (r.months ?? 6) === m ? 'var(--pine)' : 'var(--surface-2)',
+                          color: (r.months ?? 6) === m ? 'var(--on-pine)' : 'var(--muted)',
+                        }}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Paid on the...</div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={r.dayOfMonth ?? 1}
+                    placeholder="1"
+                    onChange={(e) => update(i, { dayOfMonth: parseInt(e.target.value, 10) || 1 })}
+                    style={{
+                      width: 56,
+                      border: 'none',
+                      background: 'var(--surface-2)',
+                      borderRadius: 10,
+                      padding: '9px 12px',
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 14,
+                      color: 'var(--ink)',
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>th of each month</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>When did you receive it?</div>
+                <input
+                  type="date"
+                  value={r.date ?? ''}
+                  onChange={(e) => update(i, { date: e.target.value })}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    background: 'var(--surface-2)',
+                    borderRadius: 10,
+                    padding: '9px 12px',
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 14,
+                    color: 'var(--ink)',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -476,7 +551,8 @@ function SeedIncomeStep({
         </span>
         <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
       </div>
-      <div
+      <Link
+        href="/import"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -485,6 +561,8 @@ function SeedIncomeStep({
           border: '1px solid var(--hairline)',
           borderRadius: 14,
           padding: '14px 15px',
+          textDecoration: 'none',
+          cursor: 'pointer',
         }}
       >
         <span
@@ -511,10 +589,10 @@ function SeedIncomeStep({
         </span>
         <span style={{ flex: 1 }}>
           <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--ink)' }}>
-            Connect a bank or import
+            Import bank statement
           </span>
           <span style={{ display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 1 }}>
-            Let Keel read your statements instead
+            Upload a CSV from your bank
           </span>
         </span>
         <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
@@ -528,7 +606,7 @@ function SeedIncomeStep({
             opacity="0.6"
           />
         </svg>
-      </div>
+      </Link>
     </div>
   );
 }
@@ -541,19 +619,7 @@ function ReadyStep({ data }: { data: ObData }) {
   ).length;
   const provisional = filled < 3;
 
-  const now = new Date();
-  const incomeItems: IncomeItem[] = data.incomes
-    .filter((r) => parseInt(r.amt.replace(/[^0-9]/g, ''), 10) > 0)
-    .map((r, idx) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - idx, 1);
-      const iso = d.toISOString().slice(0, 10);
-      return {
-        amount: parseInt(r.amt.replace(/[^0-9]/g, ''), 10),
-        currency: r.ccy,
-        date: iso,
-        confidence: r.recurring ? ('confirmed' as const) : ('likely' as const),
-      };
-    });
+  const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes);
 
   const essentials =
     (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
@@ -706,6 +772,41 @@ function ReadyStep({ data }: { data: ObData }) {
   );
 }
 
+// ── Income row expansion ──────────────────────────────────────────────────────
+
+function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
+  const today = new Date();
+  const items: IncomeItem[] = [];
+
+  for (const r of rows) {
+    const amt = parseFloat(r.amt.replace(/[^0-9.]/g, ''));
+    if (!amt || isNaN(amt)) continue;
+
+    if (r.recurring) {
+      const months = r.months ?? 6;
+      const day = r.dayOfMonth ?? 1;
+      for (let m = 0; m < months; m++) {
+        const d = new Date(today.getFullYear(), today.getMonth() - m, Math.min(day, 28));
+        items.push({
+          amount: amt,
+          currency: r.ccy,
+          date: d.toISOString().slice(0, 10),
+          confidence: 'confirmed',
+        });
+      }
+    } else {
+      const date = r.date || today.toISOString().slice(0, 10);
+      items.push({
+        amount: amt,
+        currency: r.ccy,
+        date,
+        confidence: 'likely',
+      });
+    }
+  }
+  return items;
+}
+
 // ── Wizard shell ──────────────────────────────────────────────────────────────
 
 type StepProps = { data: ObData; set: (patch: Partial<ObData>) => void };
@@ -746,19 +847,7 @@ export function OnboardingClient(): React.ReactElement {
   }
 
   async function commitAndNavigate() {
-    const now = new Date();
-    const incomeItems: IncomeItem[] = data.incomes
-      .filter((r) => parseInt(r.amt.replace(/[^0-9]/g, ''), 10) > 0)
-      .map((r, idx) => {
-        const d = new Date(now.getFullYear(), now.getMonth() - idx, 1);
-        const iso = d.toISOString().slice(0, 10);
-        return {
-          amount: parseInt(r.amt.replace(/[^0-9]/g, ''), 10),
-          currency: r.ccy,
-          date: iso,
-          confidence: r.recurring ? ('confirmed' as const) : ('likely' as const),
-        };
-      });
+    const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes);
 
     const essentials =
       (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +

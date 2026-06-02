@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
-import { BIG_PAYMENTS, PAY_STATUS, money, moneyK, amt, Card, Disclaimer } from '@/components/keel/ui';
+import { PAY_STATUS, money, moneyK, amt, Card, Disclaimer } from '@/components/keel/ui';
 import { TenseToggle } from '@/components/keel/TenseToggle';
 import { Dock } from '@/components/keel/Dock';
 import { IconAfford } from '@/components/keel/icons';
@@ -270,48 +270,58 @@ function AllocationSection({
 // ── Big payments preview ─────────────────────────────────────────────────────
 
 function BigPaymentsForward() {
-  const next = BIG_PAYMENTS.slice(0, 2);
-  const total = BIG_PAYMENTS.reduce((s, p) => s + p.amt, 0);
+  const { plan } = usePlan();
+  const payments = plan.bigPayments;
+  const next = payments.slice(0, 2);
+  const total = payments.reduce((s, p) => s + p.amt, 0);
 
   return (
     <Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
         <span className="smallcaps">Big payments ahead</span>
         <Link href="/coming" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pine)', textDecoration: 'none' }}>
-          All {BIG_PAYMENTS.length} →
+          All {payments.length} →
         </Link>
       </div>
       <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>
         Large costs Keel sets aside for before they land — so the gap never catches you out.
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {next.map((p, i) => {
-          const st = PAY_STATUS[p.status];
-          return (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 11,
-                padding: '11px 0', borderTop: i ? '1px solid var(--hairline)' : 'none',
-              }}
-            >
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.color, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14.5, color: 'var(--ink)', fontWeight: 500 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{p.m} · {money(p.amt)}</div>
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: st.color }}>{st.label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{
-        marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      }}>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Coming up in all</span>
-        <span className="serif tnum" style={{ fontSize: 17, color: 'var(--ink)' }}>{money(total)}</span>
-      </div>
+      {payments.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 13.5 }}>
+          No big payments logged yet — tap + to add one.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {next.map((p, i) => {
+              const st = PAY_STATUS[p.status];
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 11,
+                    padding: '11px 0', borderTop: i ? '1px solid var(--hairline)' : 'none',
+                  }}
+                >
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, color: 'var(--ink)', fontWeight: 500 }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{p.m} · {money(p.amt)}</div>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: st.color }}>{st.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{
+            marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>Coming up in all</span>
+            <span className="serif tnum" style={{ fontSize: 17, color: 'var(--ink)' }}>{money(total)}</span>
+          </div>
+        </>
+      )}
     </Card>
   );
 }

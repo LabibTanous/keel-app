@@ -7,7 +7,7 @@
 import React from 'react';
 import { usePlan } from '@/lib/store';
 import { goalTradeoff } from '@/lib/engine';
-import { BIG_PAYMENTS, PAY_STATUS, money, moneyK, Card, Cur } from '@/components/keel/ui';
+import { PAY_STATUS, money, moneyK, Card, Cur } from '@/components/keel/ui';
 import { GoalChart } from '@/components/keel/GoalChart';
 import { IconCalendar } from '@/components/keel/icons';
 import { Dock } from '@/components/keel/Dock';
@@ -87,7 +87,23 @@ function GoalHero({ saved, target, monthly, behind }: {
 // ── Big payments timeline ────────────────────────────────────────────────────
 
 function BigPaymentsTimeline() {
-  const maxAmt = Math.max(...BIG_PAYMENTS.map((p) => p.amt));
+  const { plan } = usePlan();
+  const payments = plan.bigPayments;
+
+  if (payments.length === 0) {
+    return (
+      <Card>
+        <div style={{ marginBottom: 4 }}>
+          <span className="smallcaps">Big payments ahead</span>
+        </div>
+        <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 13.5 }}>
+          No big payments logged yet — tap + to add one.
+        </div>
+      </Card>
+    );
+  }
+
+  const maxAmt = Math.max(...payments.map((p) => p.amt));
   const r = (a: number) => 6 + (a / maxAmt) * 8;
 
   return (
@@ -105,7 +121,7 @@ function BigPaymentsTimeline() {
           position: 'absolute', left: 0, right: 0, top: 28,
           height: 2, background: 'var(--hairline)', borderRadius: 2,
         }} />
-        {BIG_PAYMENTS.map((p) => {
+        {payments.map((p) => {
           const c = PAY_STATUS[p.status].color;
           const rad = r(p.amt);
           return (
@@ -133,7 +149,7 @@ function BigPaymentsTimeline() {
 
       {/* List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 8 }}>
-        {BIG_PAYMENTS.map((p, i) => {
+        {payments.map((p, i) => {
           const st = PAY_STATUS[p.status];
           return (
             <div

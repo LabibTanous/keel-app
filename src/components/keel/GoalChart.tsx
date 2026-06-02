@@ -27,7 +27,7 @@ export function GoalChart({ saved, target, projLabel, behind = false }: GoalChar
 
   // Domain bounds — exact algorithm from source
   const lo = Math.min(saved, target) * 0.55;
-  const hi = target * 1.06;
+  const hi = Math.max(saved, target) * 1.06;
 
   const yOf = (v: number): number =>
     H - pad - ((v - lo) / (hi - lo)) * (H - pad * 2);
@@ -60,7 +60,7 @@ export function GoalChart({ saved, target, projLabel, behind = false }: GoalChar
       <svg
         width="100%"
         viewBox={`0 0 ${W} ${H}`}
-        style={{ display: 'block', overflow: 'visible' }}
+        style={{ display: 'block', overflow: 'hidden' }}
       >
         {/* Target line — gold dashed */}
         <line

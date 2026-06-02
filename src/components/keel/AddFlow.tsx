@@ -13,6 +13,7 @@ import React, { useState, useRef, CSSProperties } from 'react';
 import { usePlan } from '@/lib/store';
 import { toAED } from '@/lib/engine';
 import type { IncomeItem } from '@/lib/engine';
+import type { BigPayment } from '@/lib/demo-seed';
 import { Segmented, approxAED, fmtFx } from '@/components/keel/ui';
 import { IconAfford } from '@/components/keel/icons';
 import Link from 'next/link';
@@ -143,7 +144,7 @@ interface AddFormProps {
 }
 
 function AddForm({ type, onDone }: AddFormProps) {
-  const { addIncome } = usePlan();
+  const { addIncome, addBigPayment } = usePlan();
   const cfg = FORM_CONFIGS[type];
 
   const defaultSeg =
@@ -155,6 +156,8 @@ function AddForm({ type, onDone }: AddFormProps) {
   const [amount, setAmount] = useState('');
   const [source, setSource] = useState('');
   const [date, setDate] = useState('');
+  const [paymentName, setPaymentName] = useState('');
+  const [paymentDue, setPaymentDue] = useState('');
 
   const amtNum = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
 
@@ -170,6 +173,25 @@ function AddForm({ type, onDone }: AddFormProps) {
           confidence: type === 'received' ? 'confirmed' : toEngineConfidence(seg),
         };
         addIncome(item);
+      }
+    }
+    // For big payment: wire into store
+    if (type === 'payment') {
+      const parsedAmt = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
+      if (parsedAmt > 0 && paymentName) {
+        const dueStr = paymentDue || 'Jul 15';
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const firstWord = dueStr.trim().split(/[\s,]+/)[0];
+        const parsedMonth = monthNames.find(m => m.toLowerCase() === firstWord.toLowerCase()) ?? firstWord;
+        const bp: BigPayment = {
+          id: Date.now().toString(),
+          m: parsedMonth,
+          pos: 0.5,
+          name: paymentName,
+          amt: parsedAmt,
+          status: seg === 'on' ? 'saving' : 'soon',
+        };
+        addBigPayment(bp);
       }
     }
     onDone();
@@ -245,6 +267,41 @@ function AddForm({ type, onDone }: AddFormProps) {
               <TextInput
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                placeholder={ph}
+              />
+            </Field>
+          );
+        }
+        // Big payment fields
+        if (type === 'payment' && l === 'What for') {
+          return (
+            <Field key={l} label={l}>
+              <TextInput
+                value={paymentName}
+                onChange={(e) => setPaymentName(e.target.value)}
+                placeholder={ph}
+              />
+            </Field>
+          );
+        }
+        if (type === 'payment' && l === 'Amount') {
+          return (
+            <Field key={l} label={l}>
+              <TextInput
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                inputMode="numeric"
+                placeholder={ph}
+              />
+            </Field>
+          );
+        }
+        if (type === 'payment' && l === 'Due') {
+          return (
+            <Field key={l} label={l}>
+              <TextInput
+                value={paymentDue}
+                onChange={(e) => setPaymentDue(e.target.value)}
                 placeholder={ph}
               />
             </Field>

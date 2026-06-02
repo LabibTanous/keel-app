@@ -29,6 +29,7 @@ import {
 
 export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
 import { DEMO_PROFILE } from './demo-seed';
+import type { BigPayment } from './demo-seed';
 
 export type { Profile, IncomeItem };
 
@@ -47,6 +48,7 @@ export interface Plan {
   volatilityTrend: { trend: 'choppier' | 'steadier' | 'stable'; message: string };
   goalInfo: GoalTradeoff;
   goalTarget: number;
+  bigPayments: BigPayment[];
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ export interface PlanStore {
   plan: Plan;
   setProfile: (p: Profile) => void;
   addIncome: (i: IncomeItem) => void;
+  addBigPayment: (p: BigPayment) => void;
   setPaycheck: (n: number) => void;
   setTracked: (n: number) => void;
   reset: () => void;
@@ -63,7 +66,7 @@ export interface PlanStore {
 
 // ── Pure plan derivation ──────────────────────────────────────────────────────
 
-export function computePlan(profile: Profile, trackedOverride = 0): Plan {
+export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: BigPayment[] = []): Plan {
   const monthlyTotals = groupByMonth(profile.incomes);
   const range = computeRange(monthlyTotals);
 
@@ -129,6 +132,7 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
     volatilityTrend: { trend: volTrend.trend, message: volTrend.message },
     goalInfo,
     goalTarget,
+    bigPayments,
   };
 }
 
@@ -137,11 +141,13 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
 interface State {
   profile: Profile;
   trackedThisMonth: number;
+  bigPayments: BigPayment[];
 }
 
 type Action =
   | { type: 'SET_PROFILE'; payload: Profile }
   | { type: 'ADD_INCOME'; payload: IncomeItem }
+  | { type: 'ADD_BIG_PAYMENT'; payload: BigPayment }
   | { type: 'SET_PAYCHECK'; payload: number }
   | { type: 'SET_TRACKED'; payload: number }
   | { type: 'RESET' };
@@ -158,6 +164,8 @@ function reducer(state: State, action: Action): State {
           incomes: [...state.profile.incomes, action.payload],
         },
       };
+    case 'ADD_BIG_PAYMENT':
+      return { ...state, bigPayments: [...state.bigPayments, action.payload] };
     case 'SET_PAYCHECK':
       return {
         ...state,
@@ -166,7 +174,7 @@ function reducer(state: State, action: Action): State {
     case 'SET_TRACKED':
       return { ...state, trackedThisMonth: action.payload };
     case 'RESET':
-      return { profile: DEMO_PROFILE, trackedThisMonth: 0 };
+      return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [] };
     default:
       return state;
   }
@@ -176,7 +184,7 @@ const STORAGE_KEY = 'keel_plan_state_v1';
 
 function loadState(): State {
   if (typeof window === 'undefined') {
-    return { profile: DEMO_PROFILE, trackedThisMonth: 0 };
+    return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [] };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -184,13 +192,13 @@ function loadState(): State {
       const parsed = JSON.parse(raw) as State;
       // Basic validation: must have profile with incomes array
       if (parsed?.profile?.incomes && Array.isArray(parsed.profile.incomes)) {
-        return parsed;
+        return { ...parsed, bigPayments: Array.isArray(parsed.bigPayments) ? parsed.bigPayments : [] };
       }
     }
   } catch {
     // Ignore parse errors — fall through to defaults
   }
-  return { profile: DEMO_PROFILE, trackedThisMonth: 0 };
+  return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [] };
 }
 
 function saveState(state: State): void {
@@ -209,7 +217,7 @@ const PlanContext = createContext<PlanStore | null>(null);
 export function PlanProvider({ children }: { children: React.ReactNode }) {
   // Always start with DEMO_PROFILE so SSR and first client render match.
   // After mount, hydrate from localStorage to avoid React hydration mismatch.
-  const [state, dispatch] = useReducer(reducer, { profile: DEMO_PROFILE, trackedThisMonth: 0 });
+  const [state, dispatch] = useReducer(reducer, { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [] });
 
   // On first client mount, load persisted state (runs only in the browser)
   useEffect(() => {
@@ -259,13 +267,14 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {}); // Silently ignore failures
   }, [state]);
 
-  const plan = computePlan(state.profile, state.trackedThisMonth);
+  const plan = computePlan(state.profile, state.trackedThisMonth, state.bigPayments);
 
   const store: PlanStore = {
     profile: state.profile,
     plan,
     setProfile: (p) => dispatch({ type: 'SET_PROFILE', payload: p }),
     addIncome: (i) => dispatch({ type: 'ADD_INCOME', payload: i }),
+    addBigPayment: (p) => dispatch({ type: 'ADD_BIG_PAYMENT', payload: p }),
     setPaycheck: (n) => dispatch({ type: 'SET_PAYCHECK', payload: n }),
     setTracked: (n) => dispatch({ type: 'SET_TRACKED', payload: n }),
     reset: () => dispatch({ type: 'RESET' }),

@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import { usePlan } from '@/lib/store';
 import { toAED } from '@/lib/engine';
-import { BIG_PAYMENTS, PAY_STATUS, Card, Disclaimer, Segmented, money, fmtFx, approxAED, Cur } from '@/components/keel/ui';
+import { PAY_STATUS, Card, Disclaimer, Segmented, money, fmtFx, approxAED, Cur } from '@/components/keel/ui';
 import type { IncomeItem } from '@/lib/engine';
+import type { BigPayment } from '@/lib/demo-seed';
 import { Dock } from '@/components/keel/Dock';
 
 // ── Confidence pill ────────────────────────────────────────────────────────────
@@ -166,7 +167,7 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
 
 // ── Big payment row ────────────────────────────────────────────────────────────
 
-function BigPaymentRow({ payment, last }: { payment: typeof BIG_PAYMENTS[0]; last: boolean }) {
+function BigPaymentRow({ payment, last }: { payment: BigPayment; last: boolean }) {
   const ps = PAY_STATUS[payment.status];
   return (
     <div style={{
@@ -219,7 +220,7 @@ function Approx({ on }: { on: boolean }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export function ComingClient() {
-  const { profile, addIncome } = usePlan();
+  const { profile, plan, addIncome } = usePlan();
   const [view, setView] = useState('expected');
 
   // Build timeline items from profile incomes
@@ -364,17 +365,25 @@ export function ComingClient() {
           </div>
 
           {/* Big payments section */}
-          {view !== 'received' && BIG_PAYMENTS.length > 0 && (
+          {view !== 'received' && (
             <div className="rise" style={{ animationDelay: '200ms' }}>
               <div className="smallcaps" style={{ margin: '4px 6px 11px' }}>Upcoming big payments</div>
-              <Card style={{ padding: '2px var(--pad)' }}>
-                {BIG_PAYMENTS.map((bp, i) => (
-                  <BigPaymentRow key={bp.id} payment={bp} last={i === 0} />
-                ))}
-              </Card>
-              <Disclaimer style={{ margin: '11px 6px 0' }}>
-                Big payment amounts are estimates — adjust them as you get firmer numbers.
-              </Disclaimer>
+              {plan.bigPayments.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 13.5 }}>
+                  No big payments logged yet — tap + to add one.
+                </div>
+              ) : (
+                <>
+                  <Card style={{ padding: '2px var(--pad)' }}>
+                    {plan.bigPayments.map((bp, i) => (
+                      <BigPaymentRow key={bp.id} payment={bp} last={i === 0} />
+                    ))}
+                  </Card>
+                  <Disclaimer style={{ margin: '11px 6px 0' }}>
+                    Big payment amounts are estimates — adjust them as you get firmer numbers.
+                  </Disclaimer>
+                </>
+              )}
             </div>
           )}
         </div>
