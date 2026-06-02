@@ -49,7 +49,7 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
       flexDirection: 'column',
       alignItems: 'center',
       gap: 3,
-      padding: '6px 4px',
+      padding: '10px 8px',
       flex: 1,
       minWidth: 0,
       textDecoration: 'none',

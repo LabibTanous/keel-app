@@ -466,7 +466,7 @@ function EssentialsStep({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {data.subscriptionsList.map((r, i) => (
-            <div key={r.name + '-' + i} style={{
+            <div key={'subscription-' + i} style={{
               background: 'var(--surface)', border: '1px solid var(--hairline)',
               borderRadius: 14, padding: '12px 13px',
             }}>
@@ -673,7 +673,7 @@ function GoalsStep({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
         {data.goals.map((g, i) => (
           <div
-            key={g.name + '-' + i}
+            key={'goal-' + i}
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--hairline)',
@@ -832,7 +832,7 @@ function UpcomingStep({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
         {data.bigPayments.map((r, i) => (
-          <div key={r.name + '-' + i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div key={'payment-' + i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <input
                 type="text"

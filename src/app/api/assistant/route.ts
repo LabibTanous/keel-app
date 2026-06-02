@@ -66,7 +66,8 @@ Rules:
         // Malformed JSON in ACTION_LOG — ignore
       }
     }
-    const reply = rawReply.replace(/\nACTION_LOG:\{[^}]+\}/g, '').trim();
+    const reply = rawReply.replace(/\nACTION_LOG:\{[^}]+\}/g, '').trim()
+      || "Done — I've logged that for you.";
     return NextResponse.json({ reply, action });
   } catch {
     return NextResponse.json({ error: 'server' }, { status: 500 });
