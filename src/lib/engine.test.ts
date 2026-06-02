@@ -631,3 +631,85 @@ describe('Scenario K — edge & integrity', () => {
     });
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// DECISION entries — approved + encoded (A6, E4, B3). G3 awaits a scope answer.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario A6 — confirmed income sizes the paycheck, not "possible"', () => {
+  it('all-confirmed pays more than all-possible (same amounts)', () => {
+    // scenario A6
+    const amts = [14000, 15000, 13000, 16000, 14500, 15500];
+    const confirmed = amts.map((a, i) => inc(a, `2025-${String(i + 1).padStart(2, '0')}-01`, 'AED', 'confirmed'));
+    const possible = amts.map((a, i) => inc(a, `2025-${String(i + 1).padStart(2, '0')}-01`, 'AED', 'possible'));
+    const payC = computePaycheck(computeRangeFromIncomes(confirmed), 6200, 50000);
+    const payP = computePaycheck(computeRangeFromIncomes(possible), 6200, 50000);
+    expect(payC).toBeGreaterThan(payP);
+  });
+  it("'possible' windfall does not inflate the likely month", () => {
+    // scenario A6 — five 14k confirmed + one 100k 'possible' → likely stays ~14k
+    const set = [
+      ...months([14000, 14000, 14000, 14000, 14000]),
+      inc(100000, '2025-06-01', 'AED', 'possible'),
+    ];
+    expect(Math.round(computeRangeFromIncomes(set).likely)).toBe(14000);
+  });
+  it("'possible'-only income → no firm paycheck (floors), provisional", () => {
+    // scenario A6 — nothing confirmed → range empty → honest floor
+    const r = computeRangeFromIncomes([inc(40000, '2025-01-01', 'AED', 'possible')]);
+    expect(r.likely).toBe(0);
+    expect(r.provisional).toBe(true);
+  });
+});
+
+describe('Scenario E4 — lumpy earner: empty month between payments is not "lean"', () => {
+  it('quarterly earner mid-gap → on track, not lean', () => {
+    // scenario E4 — annualised likely 22,500; a quiet month at 60% elapsed, zero tracked
+    expect(computeOutlook(0, 22500, 0.6, 'quarterly')).toBe('on track');
+    expect(computeOutlook(0, 22500, 0.6, 'irregular')).toBe('on track');
+    expect(computeOutlook(0, 22500, 0.6, 'project')).toBe('on track');
+  });
+  it('monthly earner still flagged lean when genuinely behind', () => {
+    // scenario E4 — regression: monthly pattern unaffected
+    expect(computeOutlook(2800, 14000, 0.6, 'monthly')).toBe('running lean');
+    expect(computeOutlook(2800, 14000, 0.6)).toBe('running lean'); // undefined = monthly
+  });
+  it('a genuinely strong lumpy month still surfaces', () => {
+    // scenario E4 — strong takes priority over the lumpy suppression
+    expect(computeOutlook(40000, 22500, 0.6, 'quarterly')).toBe('strong');
+  });
+  it('detectSignals suppresses the lean warning for lumpy patterns', () => {
+    // scenario E4
+    const range = computeRangeFromIncomes(
+      [inc(90000, '2025-02-10'), inc(100000, '2025-06-10'), inc(80000, '2025-10-10')],
+      'quarterly',
+    );
+    const alloc = computeAllocation(14500, 6200, 'AE', false, 0, 23000, 3, 0, {});
+    const lumpy = detectSignals(range, alloc, 0, 0.6, 'quarterly');
+    const monthly = detectSignals(range, alloc, 0, 0.6, 'monthly');
+    expect(lumpy.some(s => /running lean/i.test(s.title))).toBe(false);
+    expect(monthly.some(s => /running lean/i.test(s.title))).toBe(true);
+  });
+});
+
+describe('Scenario B3 — thin buffer → modest conservatism haircut', () => {
+  const range = computeRangeFromIncomes(months([14000, 15000, 13000, 16000, 14500, 15500]));
+  it('near-zero buffer pays ≤ healthy buffer (same income)', () => {
+    // scenario B3
+    const healthy = computePaycheck(range, 6200, 50000); // runway ~8 → no haircut
+    const thin = computePaycheck(range, 6200, 0);          // runway 0 → haircut
+    expect(thin).toBeLessThanOrEqual(healthy);
+    expect(thin).toBeLessThan(healthy); // haircut genuinely applied
+  });
+  it('haircut never starves essentials (essentials-floor still protects)', () => {
+    // scenario B3 — essentials below likely → floor keeps bills covered after haircut
+    const r = computeRangeFromIncomes(months([13500, 14000, 14500])); // likely 14000
+    const pay = computePaycheck(r, 13000, 0); // thin buffer + high essentials
+    expect(pay).toBeGreaterThanOrEqual(13000); // essentials still covered
+    expect(pay).toBeLessThan(r.likely);
+  });
+  it('demo seed unaffected (runway 3.7 → no haircut) — still 9,750', () => {
+    // scenario B3 + K3 anchor
+    expect(computePaycheck(computeRangeFromIncomes(DEMO), 6200, 23000)).toBe(9750);
+  });
+});

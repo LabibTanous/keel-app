@@ -143,8 +143,8 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const fractionElapsed = now.getDate() / daysInMonth;
 
-  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
-  const signals = detectSignals(range, allocation, trackedThisMonth, fractionElapsed);
+  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed, profile.incomePattern);
+  const signals = detectSignals(range, allocation, trackedThisMonth, fractionElapsed, profile.incomePattern);
 
   const volTrend = volatilityTrend(profile.incomes);
   const interpretations = interpret(

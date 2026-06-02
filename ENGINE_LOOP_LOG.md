@@ -47,6 +47,27 @@ financial facts; E1/F5 are behavioural/copy rules, not external facts).
 ### DECISION entries — queued for human (NOT implemented)
 A6, B3, D3, D4, E4, F7, G3, H5 — see the decision batch surfaced in chat.
 
+## Iteration 3 — DECISION entries A6, E4, B3 (approved) + G3 paused
+
+Suite 85 → **95 tests, all green**, build clean, tsc 0. Engine fixes (3):
+
+| ID | Fix | Test |
+|----|-----|------|
+| **A6** | `computeRangeFromIncomes` filters out `confidence==='possible'` before ranging — speculative income still shows in Coming but doesn't size the safe paycheck | all-confirmed > all-possible; 'possible' windfall doesn't inflate likely; possible-only → floor |
+| **E4** | `computeOutlook`/`detectSignals` take optional `incomePattern`; for project/irregular/quarterly a known-empty month is never "running lean" (annualised pace), but a strong month still surfaces. store threads `profile.incomePattern` through | quarterly mid-gap → on track; monthly still lean; strong still surfaces; detectSignals suppresses lean for lumpy |
+| **B3** | `computePaycheck` trims ~10% when runway < 1 month, applied before the floors so essentials stay protected; demo runway 3.7 → no haircut | thin buffer ≤ healthy (and <); haircut never starves essentials; demo 9,750 unchanged |
+
+Signatures kept stable (E4 added optional trailing params only). No new external source
+needed (A6/E4/B3 are behavioural rules).
+
+### Deferred (untouched, by instruction)
+D3, D4 (need a per-income client/source tag the data model lacks), F7 (gross stays +
+disclaimer), H5 (AED-home stays).
+
+### G3 — PAUSED for one product answer
+Re-derive zakatableWealth live instead of the frozen onboarding snapshot — but what
+counts as zakatable? Question surfaced to the human; encode after the answer.
+
 ## How to re-run
 `npm test` (vitest) — must stay green. The demo-seed → 9,750 case is the regression anchor.
 

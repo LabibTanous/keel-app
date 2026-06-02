@@ -268,7 +268,10 @@ export function computeRangeFromIncomes(
   incomes: IncomeItem[],
   incomePattern?: string,
 ): IncomeRange {
-  const monthly = groupByMonth(incomes);
+  // scenario A6: 'possible' income is speculative — it still shows in Coming, but it
+  // must NOT size the safe paycheck. Range is built from confirmed + likely only.
+  const ranged = incomes.filter(i => i.confidence !== 'possible');
+  const monthly = groupByMonth(ranged);
   const activeKeys = Object.keys(monthly).sort();
 
   if (activeKeys.length === 0) return { lean: 0, likely: 0, strong: 0, provisional: true };
@@ -318,6 +321,15 @@ export function computePaycheck(
   const safetyFactor = Math.min(0.85, Math.max(0.55, 0.85 - volatility * 0.35));
 
   let p = roundTo250(range.likely * safetyFactor);
+
+  // scenario B3: thin-buffer conservatism. With under a month of runway, a bad month
+  // can't be absorbed — trim ~10% so pay leans safer. Applied BEFORE the floors so the
+  // essentials-floor still protects bill coverage, and never breaks the demo anchor
+  // (demo runway 3.7 → no haircut).
+  if (essentials > 0 && bufferBalance / essentials < 1) {
+    p = roundTo250(p * 0.9);
+  }
+
   if (p >= range.likely) p = roundTo250(range.likely - 250);
 
   if (p < essentials && essentials < range.likely) {
@@ -380,6 +392,7 @@ export function computeOutlook(
   trackedThisMonth: number,
   likelyMonth: number,
   fractionElapsed: number,
+  incomePattern?: string,
 ): Outlook {
   if (likelyMonth <= 0) return 'on track';
   // Don't judge early in the month. Freelancers are paid mid/late month, so a quiet
@@ -388,8 +401,14 @@ export function computeOutlook(
   const expectedByNow = likelyMonth * Math.min(1, Math.max(0, fractionElapsed));
   if (expectedByNow <= 0) return 'on track';
   const ratio = trackedThisMonth / expectedByNow;
-  if (ratio < 0.5) return 'running lean';
+  // scenario E4: lumpy earners (project/irregular/quarterly) get paid in bursts, so a
+  // known-empty month between payments is NORMAL — never flag it "running lean". The
+  // 'likely' for these is an annualised figure, so monthly proration would false-alarm.
+  // A genuinely strong month can still surface.
+  const lumpy = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
   if (ratio > 1.3) return 'strong';
+  if (lumpy) return 'on track';
+  if (ratio < 0.5) return 'running lean';
   return 'on track';
 }
 
@@ -641,6 +660,7 @@ export function detectSignals(
   allocation: Allocation,
   trackedThisMonth: number,
   fractionElapsed: number,
+  incomePattern?: string,
 ): Signal[] {
   const out: Signal[] = [];
 
@@ -648,7 +668,7 @@ export function detectSignals(
     out.push({ kind: 'tip', title: 'Plan is provisional', detail: 'Log at least 3 months of income for a reliable range. Current estimates are widened to be safe.' });
   }
 
-  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
+  const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed, incomePattern);
   if (outlook === 'running lean') {
     out.push({ kind: 'warning', title: 'Running lean this month', detail: 'Income tracked so far is well below your usual pace. Your paycheck still holds — that\'s what the buffer is for — but ease off non-essentials.' });
   }
