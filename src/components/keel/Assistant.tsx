@@ -23,6 +23,7 @@ interface AssistantProps {
 }
 
 interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
 }
@@ -50,18 +51,56 @@ function isInvestmentAsk(q: string): boolean {
 // ── Build system context from live plan ───────────────────────────────────────
 
 function buildContext(plan: Plan): string {
-  const { range, paycheck, allocation, runway, outlook, trackedThisMonth } = plan;
-  return `You are Keel’s in-app financial adviser for a freelancer with irregular income. Speak warmly, plainly and briefly — 2 to 4 sentences, no jargon, no hype, never scolding. All money is in AED.
+  const { range, paycheck, allocation, runway, outlook, trackedThisMonth, interpretations, volatilityTrend: volTrend } = plan;
+  const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
-The user’s current plan:
-- Steady paycheck they pay themselves: AED ${Math.round(paycheck).toLocaleString('en-US')} / month.
-- Honest income range: lean AED ${Math.round(range.lean).toLocaleString('en-US')} / likely AED ${Math.round(range.likely).toLocaleString('en-US')} / strong AED ${Math.round(range.strong).toLocaleString('en-US')}. ${range.provisional ? 'Provisional — fewer than 3 months of data.' : 'Based on real history.'}
-- Where the paycheck goes: Rent & bills ${Math.round(allocation.rentAndBills).toLocaleString('en-US')}, Tax set-aside ${Math.round(allocation.tax).toLocaleString('en-US')}, Runway buffer ${Math.round(allocation.buffer).toLocaleString('en-US')}, Spending ${Math.round(allocation.spending).toLocaleString('en-US')}.
-- Buffer runway: ${runway} months (${Math.round(allocation.rentAndBills * runway).toLocaleString('en-US')} AED saved).
-- Income tracked so far this month: AED ${Math.round(trackedThisMonth).toLocaleString('en-US')}.
-- Outlook: ${outlook}.
+  const lines: string[] = [
+    "You are Keel’s in-app financial adviser for a freelancer with irregular income.",
+    "Coaching stance: reflect what the numbers mean, don’t direct or lecture. Be warm and brief — 2 to 4 sentences. No jargon, no hype, never scolding. All money is in AED.",
+    "",
+    "The user’s current plan:",
+    `- Steady paycheck they pay themselves: AED ${fmt(paycheck)} / month.`,
+    `- Why this paycheck: ${interpretations.paycheckWhy}`,
+    `- Honest income range: lean AED ${fmt(range.lean)} / likely AED ${fmt(range.likely)} / strong AED ${fmt(range.strong)}. ${range.provisional ? "Provisional — fewer than 3 months of data." : "Based on real history."}`,
+    `- Where the paycheck goes: Rent & bills ${fmt(allocation.rentAndBills)}, Tax set-aside ${fmt(allocation.tax)}, Runway buffer ${fmt(allocation.buffer)}, Spending ${fmt(allocation.spending)}.`,
+    `- Buffer runway: ${runway} months. ${interpretations.runwayMeaning}`,
+    `- Income tracked so far this month: AED ${fmt(trackedThisMonth)}.`,
+    `- Outlook: ${outlook}. ${interpretations.outlookMeaning}`,
+  ];
 
-Answer the user’s question using this context. If asked something you can’t know, say so briefly and suggest what would help. Never invent specific numbers beyond what’s given. You do NOT give specific investment advice (which stocks, crypto, funds to buy) — gently decline and steer back to planning, buffer and steady pay.`;
+  if (volTrend.trend !== "stable") {
+    lines.push(`- Income pattern: ${volTrend.message}`);
+  }
+
+  if (interpretations.taxMeaning) {
+    lines.push(`- Tax note: ${interpretations.taxMeaning}`);
+  }
+
+  if (interpretations.spendingMeaning) {
+    lines.push(`- Spending note: ${interpretations.spendingMeaning}`);
+  }
+
+  if (interpretations.topInsight) {
+    lines.push(`- Most important right now: ${interpretations.topInsight}`);
+  }
+
+  // Goal / trajectory — so AI can reason across saving and spending in the same answer
+  if (plan.goalTarget > 0) {
+    const g = plan.goalInfo;
+    const monthsStr = g.monthsToGoal !== null ? `${g.monthsToGoal} months` : 'already at target';
+    lines.push(`- Runway goal: AED ${fmt(plan.goalTarget)} target. Contributing AED ${fmt(g.requiredMonthly)}/mo — reaches goal in ${monthsStr}. Spending after buffer contribution: AED ${fmt(plan.allocation.spending)}/mo.`);
+  }
+
+  if (range.provisional) {
+    lines.push(`- Income data is provisional (fewer than 3 months of history). Hedge any estimates — the numbers sharpen as more income is logged.`);
+  }
+
+  lines.push("");
+  lines.push("When the user asks a cross-cutting question (e.g. \"can I afford X and still hit my goal?\"), reason across the full connected plan — paycheck, runway, spending, goal trajectory, outlook, and any upcoming income — before answering.");
+  lines.push("Answer the user’s question using this context. If asked something you can’t know, say so briefly and suggest what would help. Never invent specific numbers beyond what’s given.");
+  lines.push("Hard boundary: you do NOT give specific investment advice (which stocks, crypto, funds to buy) — gently decline and steer back to planning, buffer and steady pay.");
+
+  return lines.join("\n");
 }
 
 // Fallback static responses when window.claude is unavailable
@@ -86,11 +125,22 @@ function staticFallback(question: string, plan: Plan): string {
 
 export function Assistant({ open, onClose, plan }: AssistantProps) {
   const [msgs, setMsgs] = useState<Message[]>([
-    { role: 'assistant', content: INITIAL_MESSAGE },
+    { id: 'init', role: 'assistant', content: INITIAL_MESSAGE },
   ]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevOpenRef = useRef(open);
+
+  // Reset inline at render time when open transitions false→true (avoids extra useEffect render)
+  if (prevOpenRef.current !== open) {
+    prevOpenRef.current = open;
+    if (open) {
+      setMsgs([{ id: 'init', role: 'assistant', content: INITIAL_MESSAGE }]);
+      setInput('');
+      setBusy(false);
+    }
+  }
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -99,20 +149,11 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
     }
   }, [msgs, busy, open]);
 
-  // Reset to initial state when sheet opens
-  useEffect(() => {
-    if (open) {
-      setMsgs([{ role: 'assistant', content: INITIAL_MESSAGE }]);
-      setInput('');
-      setBusy(false);
-    }
-  }, [open]);
-
   async function ask(text: string) {
     const q = (text || '').trim();
     if (!q || busy) return;
 
-    const next: Message[] = [...msgs, { role: 'user', content: q }];
+    const next: Message[] = [...msgs, { id: `u-${Date.now()}`, role: 'user', content: q }];
     setMsgs(next);
     setInput('');
     setBusy(true);
@@ -120,7 +161,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
     // Designed refusal for investment questions
     if (isInvestmentAsk(q)) {
       setTimeout(() => {
-        setMsgs(m => [...m, { role: 'assistant', content: ASST_REFUSAL }]);
+        setMsgs(m => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: ASST_REFUSAL }]);
         setBusy(false);
       }, 350);
       return;
@@ -135,12 +176,12 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
       if (res.ok) {
         const data = await res.json();
         const reply = (data.reply || "").trim();
-        setMsgs(m => [...m, { role: "assistant", content: reply || staticFallback(q, plan) }]);
+        setMsgs(m => [...m, { id: `a-${Date.now()}`, role: "assistant", content: reply || staticFallback(q, plan) }]);
       } else {
-        setMsgs(m => [...m, { role: "assistant", content: staticFallback(q, plan) }]);
+        setMsgs(m => [...m, { id: `a-${Date.now()}`, role: "assistant", content: staticFallback(q, plan) }]);
       }
     } catch {
-      setMsgs(m => [...m, { role: "assistant", content: staticFallback(q, plan) }]);
+      setMsgs(m => [...m, { id: `a-${Date.now()}`, role: "assistant", content: staticFallback(q, plan) }]);
     }
 
     setBusy(false);
@@ -158,13 +199,16 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
       }}
     >
       {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Close adviser"
         onClick={onClose}
         style={{
           position: 'absolute', inset: 0,
           background: 'rgba(20,25,21,0.4)',
           opacity: open ? 1 : 0,
           transition: 'opacity 0.25s ease',
+          border: 'none', cursor: 'pointer', width: '100%', height: '100%', padding: 0,
         }}
       />
 
@@ -199,6 +243,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>Knows your plan &middot; here to help</div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{
               width: 30, height: 30, borderRadius: '50%', border: 'none',
@@ -220,9 +265,9 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             display: 'flex', flexDirection: 'column', gap: 10,
           }}
         >
-          {msgs.map((m, i) => (
+          {msgs.map((m) => (
             <div
-              key={i}
+              key={m.id}
               style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '84%' }}
             >
               <div style={{
@@ -252,6 +297,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
               {ASST_SUGGESTIONS.map(s => (
                 <button
+                  type="button"
                   key={s}
                   onClick={() => ask(s)}
                   style={{
@@ -288,19 +334,23 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             padding: '6px 16px', paddingBottom: 22,
           }}>
             <input
+              aria-label="Ask about your money"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about your money…"
+              className="focus-ring"
               style={{
                 flex: 1, border: '1px solid var(--hairline)',
                 background: 'var(--surface)', borderRadius: 999,
                 padding: '12px 16px', fontSize: 16,
-                fontFamily: 'var(--font-ui)', color: 'var(--ink)', outline: 'none',
+                fontFamily: 'var(--font-ui)', color: 'var(--ink)',
               }}
             />
             <button
+              type="button"
               onClick={() => ask(input)}
+              aria-label="Send"
               disabled={busy}
               style={{
                 width: 44, height: 44, borderRadius: '50%', flexShrink: 0,

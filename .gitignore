@@ -32,4 +32,17 @@ Thumbs.db
 # Vercel
 .vercel
 
-.vercel
+# TypeScript build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Temp / generated reports
+doctor-report.json
+analyze.js
+CONVEX_MIGRATION_LOG.md
+KEEL_BUILD_LOG.md
+
+# Agent / AI tooling state
+.agents/
+.claude/
+.reactdoctorrc

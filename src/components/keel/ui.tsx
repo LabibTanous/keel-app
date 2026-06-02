@@ -223,6 +223,7 @@ export function Segmented({ options, value, onChange }: SegmentedProps): React.R
       }} />
       {options.map(o => (
         <button
+          type="button"
           key={o.value}
           onClick={() => onChange(o.value)}
           style={{
@@ -251,7 +252,10 @@ interface SwitchProps {
 export function Switch({ on, onClick }: SwitchProps): React.ReactElement {
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-label={on ? 'Toggle off' : 'Toggle on'}
+      aria-pressed={on}
       style={{
         width: 46, height: 27, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
         background: on ? 'var(--pine)' : 'var(--surface-2)', position: 'relative',

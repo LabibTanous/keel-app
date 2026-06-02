@@ -1,0 +1,25 @@
+{
+  "ignore": {
+    "files": ["keel_handoff/**"],
+    "rules": [
+      "deslop/unused-file",
+      "deslop/unused-dependency",
+      "deslop/unused-dev-dependency",
+      "react-doctor/no-tiny-text",
+      "react-doctor/no-giant-component",
+      "react-doctor/no-inline-exhaustive-style",
+      "react-doctor/prefer-useReducer",
+      "react-doctor/only-export-components",
+      "react-doctor/no-inline-bounce-easing",
+      "react-doctor/no-layout-transition-inline",
+      "react-doctor/no-transition-all",
+      "react-doctor/rerender-lazy-state-init",
+      "react-doctor/js-combine-iterations",
+      "react-doctor/rerender-memo-with-default-value",
+      "react-doctor/prefer-module-scope-static-value",
+      "react-doctor/design-no-em-dash-in-jsx-text",
+      "react-doctor/prefer-module-scope-pure-function",
+      "react-doctor/no-cascading-set-state"
+    ]
+  }
+}

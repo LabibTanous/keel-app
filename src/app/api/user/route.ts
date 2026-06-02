@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getUser, updateUserProfile } from "@/lib/db"
+import { getFullProfile, saveFullProfile } from "@/lib/db"
 
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const user = await getUser(session.user.id)
-  return NextResponse.json({ user })
+  const profileJson = await getFullProfile(session.user.id)
+  return NextResponse.json({ profileJson: profileJson ?? null })
 }
 
 export async function PATCH(request: Request) {
@@ -14,8 +14,11 @@ export async function PATCH(request: Request) {
     const session = await auth()
     if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     const body = await request.json()
-    const user = await updateUserProfile(session.user.id, body)
-    return NextResponse.json({ user })
+    if (typeof body.profileJson !== "string") {
+      return NextResponse.json({ error: "profileJson must be a string" }, { status: 400 })
+    }
+    await saveFullProfile(session.user.id, body.profileJson)
+    return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error("[PATCH /api/user] error:", msg)

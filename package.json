@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -18,6 +19,7 @@
     "@supabase/supabase-js": "^2.49.8",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "convex": "^1.40.0",
     "framer-motion": "^12.40.0",
     "lucide-react": "^0.454.0",
     "next": "^16.2.6",
@@ -35,6 +37,7 @@
     "eslint": "^8",
     "eslint-config-next": "^16.2.6",
     "postcss": "^8.4.47",
+    "react-doctor": "^0.2.16",
     "tailwindcss": "^3.4.14",
     "typescript": "^5"
   }

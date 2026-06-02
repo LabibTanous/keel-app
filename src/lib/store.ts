@@ -12,7 +12,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
-import type { IncomeItem, Profile, IncomeRange, Allocation, Signal } from './engine';
+import type { IncomeItem, Profile, IncomeRange, Allocation, Signal, GoalTradeoff, IncomingPaymentHint, Interpretations } from './engine';
 import {
   toAED,
   groupByMonth,
@@ -22,7 +22,12 @@ import {
   computeRunway,
   computeOutlook,
   detectSignals,
+  interpret,
+  volatilityTrend,
+  goalTradeoff,
 } from './engine';
+
+export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
 import { DEMO_PROFILE } from './demo-seed';
 
 export type { Profile, IncomeItem };
@@ -38,6 +43,10 @@ export interface Plan {
   outlook: string;
   trackedThisMonth: number;
   taxTurnover: number;
+  interpretations: Interpretations;
+  volatilityTrend: { trend: 'choppier' | 'steadier' | 'stable'; message: string };
+  goalInfo: GoalTradeoff;
+  goalTarget: number;
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -70,6 +79,12 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
     ? profile.paycheckOverride
     : computePaycheck(range, profile.essentials, profile.bufferBalance);
 
+  // YTD tax turnover: sum all incomes in current calendar year
+  const thisYear = new Date().getFullYear().toString();
+  const taxTurnover = profile.incomes
+    .filter(i => i.date.startsWith(thisYear))
+    .reduce((sum, i) => sum + toAED(i.amount, i.currency), 0);
+
   const allocation = computeAllocation(
     rawPaycheck,
     profile.essentials,
@@ -78,6 +93,7 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
     profile.zakatableWealth ?? 0,
     profile.bufferBalance,
     profile.targetMonths,
+    taxTurnover,
   );
 
   const runway = computeRunway(profile.bufferBalance, profile.essentials);
@@ -90,11 +106,15 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
   const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
   const signals = detectSignals(range, allocation, trackedThisMonth, fractionElapsed);
 
-  // YTD tax turnover: sum all incomes in current calendar year
-  const thisYear = new Date().getFullYear().toString();
-  const taxTurnover = profile.incomes
-    .filter(i => i.date.startsWith(thisYear))
-    .reduce((sum, i) => sum + toAED(i.amount, i.currency), 0);
+  const volTrend = volatilityTrend(profile.incomes);
+  const interpretations = interpret(
+    { range, paycheck: rawPaycheck, allocation, runway, outlook, trackedThisMonth, taxTurnover },
+    { essentials: profile.essentials, targetMonths: profile.targetMonths, region: profile.region },
+    profile.incomes,
+  );
+
+  const goalTarget = profile.essentials * profile.targetMonths;
+  const goalInfo = goalTradeoff(goalTarget, profile.bufferBalance, allocation.buffer, allocation.spending);
 
   return {
     range,
@@ -105,6 +125,10 @@ export function computePlan(profile: Profile, trackedOverride = 0): Plan {
     outlook,
     trackedThisMonth,
     taxTurnover,
+    interpretations,
+    volatilityTrend: { trend: volTrend.trend, message: volTrend.message },
+    goalInfo,
+    goalTarget,
   };
 }
 
@@ -192,12 +216,47 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     const loaded = loadState();
     dispatch({ type: 'SET_PROFILE', payload: loaded.profile });
     if (loaded.trackedThisMonth) dispatch({ type: 'SET_TRACKED', payload: loaded.trackedThisMonth });
+
+    // Try to hydrate from Convex only if a session exists.
+    // localStorage is the fast-path; Convex is a background update.
+    fetch('/api/auth/session')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((session) => {
+        if (!session?.user?.id) return; // No session — stay on localStorage, no noise
+        return fetch('/api/user')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data?.profileJson) {
+              try {
+                const serverProfile = JSON.parse(data.profileJson) as Profile;
+                if (serverProfile?.incomes && Array.isArray(serverProfile.incomes)) {
+                  dispatch({ type: 'SET_PROFILE', payload: serverProfile });
+                }
+              } catch {
+                // Ignore malformed JSON
+              }
+            }
+          });
+      })
+      .catch(() => {}); // No session or server error — stay on localStorage
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist on every change
+  // Persist on every change (localStorage fast-path + best-effort Convex sync)
   useEffect(() => {
     saveState(state);
+    // Best-effort server sync — only fires if a session exists
+    fetch('/api/auth/session')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((session) => {
+        if (!session?.user?.id) return;
+        return fetch('/api/user', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ profileJson: JSON.stringify(state.profile) }),
+        });
+      })
+      .catch(() => {}); // Silently ignore failures
   }, [state]);
 
   const plan = computePlan(state.profile, state.trackedThisMonth);

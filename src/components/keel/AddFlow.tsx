@@ -9,7 +9,7 @@
  * On confirm for income/received types: calls store.addIncome and closes.
  */
 
-import React, { useState, useEffect, CSSProperties } from 'react';
+import React, { useState, useRef, CSSProperties } from 'react';
 import { usePlan } from '@/lib/store';
 import { toAED } from '@/lib/engine';
 import type { IncomeItem } from '@/lib/engine';
@@ -184,6 +184,7 @@ function AddForm({ type, onDone }: AddFormProps) {
             <Field key={l} label={l}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
+                  aria-label="Amount"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value.replace(/[^0-9,]/g, ''))}
                   inputMode="numeric"
@@ -269,6 +270,7 @@ function AddForm({ type, onDone }: AddFormProps) {
       )}
 
       <button
+        type="button"
         onClick={handleConfirm}
         style={{
           width: '100%', padding: '15px', borderRadius: 14, cursor: 'pointer',
@@ -286,11 +288,13 @@ function AddForm({ type, onDone }: AddFormProps) {
 
 export function AddFlow({ open, onClose }: AddFlowProps) {
   const [step, setStep] = useState<'choose' | AddTypeKey>('choose');
+  const prevOpen = useRef(open);
 
-  // Reset to choose step whenever the sheet opens
-  useEffect(() => {
-    if (open) setStep('choose');
-  }, [open]);
+  // Reset to choose step when the sheet transitions from closed → open
+  if (!prevOpen.current && open) {
+    setStep('choose');
+  }
+  prevOpen.current = open;
 
   return (
     <div
@@ -300,13 +304,16 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
       }}
     >
       {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Close"
         onClick={onClose}
         style={{
           position: 'absolute', inset: 0,
           background: 'rgba(20,25,21,0.32)',
           opacity: open ? 1 : 0,
           transition: 'opacity 0.25s ease',
+          border: 'none', cursor: 'pointer', width: '100%', height: '100%', padding: 0,
         }}
       />
 
@@ -343,6 +350,7 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ADD_TYPES.map(t => (
                 <button
+                  type="button"
                   key={t.key}
                   onClick={() => setStep(t.key)}
                   style={{
@@ -411,7 +419,9 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
             {/* Back + title row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 16 }}>
               <button
+                type="button"
                 onClick={() => setStep('choose')}
+                aria-label="Back"
                 style={{
                   width: 34, height: 34, borderRadius: '50%',
                   border: '1px solid var(--hairline)', background: 'var(--surface)',

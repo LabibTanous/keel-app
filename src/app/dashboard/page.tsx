@@ -47,19 +47,46 @@ const OUTLOOK_CFG: Record<OutlookKey, OutlookCfg> = {
   },
 };
 
-function outlookText(outlook: string): React.ReactNode {
+function outlookText(outlook: string, interpretation: string): React.ReactNode {
+  if (interpretation) {
+    return <span>{interpretation}</span>;
+  }
   if (outlook === 'running lean') {
-    return <span>Income&apos;s light so far — but your buffer keeps the plan whole. <b>Nothing needs to change yet.</b></span>;
+    return <span>Income is light so far — your buffer keeps the plan whole.</span>;
   }
   if (outlook === 'strong') {
-    return <span>Ahead of plan. The extra tops up your <b>runway buffer</b> first — next month starts steadier.</span>;
+    return <span>Ahead of plan. A good moment to bank the extra.</span>;
   }
-  return <span>A quieter fortnight ahead — only <b>one invoice</b> expected. Your buffer covers the gap, so the plan holds.</span>;
+  return <span>On track. Keep an eye on what&apos;s coming in.</span>;
+}
+
+// ── Insight card ─────────────────────────────────────────────────────────────
+
+function InsightCard({ insight, level }: { insight: string; level: 'warning' | 'tip' | 'success' }) {
+  if (!insight) return null;
+  const cfg = {
+    warning: { bg: 'var(--clay-soft)', color: 'var(--clay)' },
+    tip:     { bg: 'var(--gold-soft)', color: 'var(--gold)' },
+    success: { bg: 'var(--surface)',   color: 'var(--pine)' },
+  }[level];
+  return (
+    <div style={{
+      background: cfg.bg, borderRadius: 'var(--r-card)',
+      padding: '12px var(--pad)', fontSize: 13.5, lineHeight: 1.5,
+      color: 'var(--ink)', border: level === 'success' ? '1px solid var(--hairline)' : 'none',
+      boxShadow: 'var(--shadow-sm)',
+    }}>
+      <span style={{ fontWeight: 600, color: cfg.color, marginRight: 6 }}>
+        {level === 'warning' ? 'Heads up' : level === 'tip' ? 'Note' : 'Good news'}
+      </span>
+      {insight}
+    </div>
+  );
 }
 
 // ── Signal card ──────────────────────────────────────────────────────────────
 
-function SignalCard({ outlook }: { outlook: string }) {
+function SignalCard({ outlook, interpretation }: { outlook: string; interpretation: string }) {
   const key = (outlook as OutlookKey) in OUTLOOK_CFG ? (outlook as OutlookKey) : 'on track';
   const cfg = OUTLOOK_CFG[key];
   const filled = cfg.tone === 'warn' || cfg.tone === 'good';
@@ -87,7 +114,7 @@ function SignalCard({ outlook }: { outlook: string }) {
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="smallcaps" style={{ color: cfg.accent, marginBottom: 5 }}>{cfg.lead}</div>
-        <div style={{ fontSize: 14.5, lineHeight: 1.5, color: 'var(--ink)' }}>{outlookText(outlook)}</div>
+        <div style={{ fontSize: 14.5, lineHeight: 1.5, color: 'var(--ink)' }}>{outlookText(outlook, interpretation)}</div>
       </div>
     </div>
   );
@@ -291,14 +318,14 @@ function BigPaymentsForward() {
 
 // ── HomeForward ──────────────────────────────────────────────────────────────
 
+const D = (i: number): React.CSSProperties => ({ animationDelay: `${i * 80}ms` });
+
 function HomeForward() {
   const { plan, profile } = usePlan();
   const { range, paycheck, allocation, trackedThisMonth, outlook } = plan;
 
   const outlookKey = (outlook as OutlookKey) in OUTLOOK_CFG ? (outlook as OutlookKey) : 'on track';
   const trackColor = OUTLOOK_CFG[outlookKey].track;
-
-  const D = (i: number): React.CSSProperties => ({ animationDelay: `${i * 80}ms` });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -335,7 +362,15 @@ function HomeForward() {
 
       {/* Signal / outlook */}
       <div className="rise" style={D(1)}>
-        <SignalCard outlook={outlook} />
+        <SignalCard outlook={outlook} interpretation={plan.interpretations.outlookMeaning} />
+      </div>
+
+      {/* Top insight from interpretations */}
+      <div className="rise" style={D(1)}>
+        <InsightCard
+          insight={plan.interpretations.topInsight}
+          level={plan.interpretations.topInsightLevel}
+        />
       </div>
 
       {/* Range band */}
@@ -404,16 +439,18 @@ function HomeForward() {
 // ── HomeBack ─────────────────────────────────────────────────────────────────
 
 function HomeBack() {
+  const { plan, profile } = usePlan();
+  const currentMonth = new Date().toLocaleString('en-US', { month: 'long' });
+
   const cats: [string, number][] = [
-    ['Rent',            1650],
-    ['Groceries',        410],
-    ['Eating out',       260],
-    ['Transport',        120],
-    ['Subscriptions',     95],
-    ['Everything else',  885],
+    ['Rent & bills', plan.allocation.rentAndBills],
+    ...(plan.allocation.tax > 0 ? [['Tax set-aside', plan.allocation.tax] as [string, number]] : []),
+    ...(profile.zakatOn && plan.allocation.zakat > 0 ? [['Zakat set-aside', plan.allocation.zakat] as [string, number]] : []),
+    ['Runway buffer', plan.allocation.buffer],
+    ['Spending', plan.allocation.spending],
   ];
-  const total = cats.reduce((s, c) => s + c[1], 0);
-  const max = Math.max(...cats.map((c) => c[1]));
+  const total = plan.paycheck;
+  const max = Math.max(...cats.map((c) => c[1]), 1);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -421,7 +458,7 @@ function HomeBack() {
         background: 'var(--surface)', borderRadius: 12, padding: '18px var(--pad)',
         border: '1px solid var(--hairline)',
       }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: 0.02 }}>You spent — May</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: 0.02 }}>Paycheck allocation — {currentMonth}</div>
         <div className="tnum" style={{ fontSize: 38, fontWeight: 700, color: 'var(--ink)', marginTop: 4, letterSpacing: -0.5 }}>
           {money(total)}
         </div>

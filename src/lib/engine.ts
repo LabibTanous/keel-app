@@ -203,6 +203,8 @@ export function computePaycheck(
 
 /**
  * Compute allocation buckets. Must sum to paycheck.
+ * taxTurnover: YTD revenue used to check VAT threshold proximity.
+ * When near/over VAT threshold, tax set-aside rises to pre-fund the obligation.
  */
 export function computeAllocation(
   paycheck: number,
@@ -212,6 +214,7 @@ export function computeAllocation(
   zakatableWealth: number,
   bufferBalance: number,
   targetMonths: number,
+  taxTurnover = 0,
 ): Allocation {
   const tax_region = TAX_REGIONS[region];
 
@@ -221,6 +224,12 @@ export function computeAllocation(
     const annualised = paycheck * 12;
     if (annualised > tax_region.ctThreshold) {
       tax = Math.round((annualised - tax_region.ctThreshold) * tax_region.ctRate / 12);
+    }
+    // VAT reserve: when approaching or over VAT registration line, set aside a monthly
+    // buffer (vatRate × paycheck) so the obligation never arrives as a surprise.
+    // This actively reshapes the allocation and lowers free spending — by design.
+    if (statusOf(tax_region.vatThreshold, taxTurnover) !== 'clear') {
+      tax += Math.round(paycheck * tax_region.vatRate);
     }
   }
 
@@ -319,6 +328,242 @@ export function computeAfford(
     label: 'Would break the plan',
     reason: `This exceeds your free-to-spend and safe buffer combined. Worth waiting for a strong month or saving toward it.`,
     freeRemaining: spendingLeft - cost,
+  };
+}
+
+// ── Cross-link functions ──────────────────────────────────────────────────────
+
+export interface IncomingPaymentHint {
+  amount: number;
+  currency: string;
+  daysAway: number;
+  wouldChangeTo: 'fits' | null;
+}
+
+/**
+ * Checks if a confirmed income landing within 14 days would change a dips/break verdict to fits.
+ */
+export function crossLinkAffordWithIncoming(
+  cost: number,
+  spendingLeft: number,
+  incomes: IncomeItem[],
+): IncomingPaymentHint | null {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const horizonDate = new Date();
+  horizonDate.setDate(horizonDate.getDate() + 14);
+  const horizonStr = horizonDate.toISOString().slice(0, 10);
+
+  const upcoming = incomes
+    .filter(i => i.confidence === 'confirmed' && i.date >= todayStr && i.date <= horizonStr)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const DAY_MS = 1000 * 60 * 60 * 24;
+
+  for (const inc of upcoming) {
+    const aed = toAED(inc.amount, inc.currency);
+    if (spendingLeft + aed >= cost) {
+      const incDate = new Date(inc.date);
+      const today = new Date(todayStr);
+      const daysAway = Math.round((incDate.getTime() - today.getTime()) / DAY_MS);
+      return { amount: inc.amount, currency: inc.currency, daysAway, wouldChangeTo: 'fits' };
+    }
+  }
+
+  return null;
+}
+
+export interface GoalTradeoff {
+  requiredMonthly: number;
+  newSpending: number;
+  monthsToGoal: number | null;
+  feasible: boolean;
+}
+
+/**
+ * Computes how a monthly goal contribution affects spending and time to goal.
+ */
+export function goalTradeoff(
+  target: number,
+  currentBuffer: number,
+  contribution: number,
+  currentSpending: number,
+): GoalTradeoff {
+  const remaining = Math.max(0, target - currentBuffer);
+  const monthsToGoal = contribution > 0 ? Math.ceil(remaining / contribution) : null;
+  const newSpending = Math.max(0, currentSpending - contribution);
+  const feasible = newSpending >= 0;
+  return { requiredMonthly: contribution, newSpending, monthsToGoal, feasible };
+}
+
+/**
+ * Computes volatility trend across recent vs prior months.
+ */
+export function volatilityTrend(
+  incomes: IncomeItem[],
+): { recentVolatility: number; priorVolatility: number; trend: 'choppier' | 'steadier' | 'stable'; message: string } {
+  const monthly = groupByMonth(incomes);
+  const keys = Object.keys(monthly).sort();
+
+  if (keys.length < 4) {
+    return { recentVolatility: 0, priorVolatility: 0, trend: 'stable', message: '' };
+  }
+
+  function cv(values: number[]): number {
+    if (values.length < 2) return 0;
+    const mean = values.reduce((s, x) => s + x, 0) / values.length;
+    if (mean <= 0) return 0;
+    const variance = values.reduce((s, x) => s + (x - mean) ** 2, 0) / values.length;
+    return Math.sqrt(variance) / mean;
+  }
+
+  const recentValues = keys.slice(-3).map(k => monthly[k]);
+  const priorValues = keys.slice(-6, -3).map(k => monthly[k]);
+
+  const recentCV = cv(recentValues);
+  const priorCV = cv(priorValues);
+  const delta = recentCV - priorCV;
+
+  let trend: 'choppier' | 'steadier' | 'stable';
+  let message: string;
+
+  if (delta > 0.1) {
+    trend = 'choppier';
+    message = "Your income has been swingier lately — that's why your safe pay is more cautious now.";
+  } else if (delta < -0.1) {
+    trend = 'steadier';
+    message = "Your income has been more consistent lately — your safe pay could grow with it.";
+  } else {
+    trend = 'stable';
+    message = '';
+  }
+
+  return { recentVolatility: recentCV, priorVolatility: priorCV, trend, message };
+}
+
+// ── Interpret ─────────────────────────────────────────────────────────────────
+
+export interface Interpretations {
+  paycheckWhy: string;
+  runwayMeaning: string;
+  outlookMeaning: string;
+  taxMeaning: string;
+  spendingMeaning: string;
+  volatilityMeaning: string;
+  topInsight: string;
+  topInsightLevel: 'warning' | 'tip' | 'success';
+}
+
+export function interpret(
+  planData: {
+    range: IncomeRange;
+    paycheck: number;
+    allocation: Allocation;
+    runway: number;
+    outlook: string;
+    trackedThisMonth: number;
+    taxTurnover: number;
+  },
+  profileData: {
+    essentials: number;
+    targetMonths: number;
+    region: string;
+  },
+  incomes: IncomeItem[],
+): Interpretations {
+  const { range, paycheck, allocation, runway, outlook, taxTurnover } = planData;
+  const { essentials, region } = profileData;
+
+  // paycheckWhy
+  const paycheckWhy = range.provisional
+    ? 'An early estimate — log more months of income and this sharpens.'
+    : `Set below your likely month (AED ${Math.round(range.likely).toLocaleString('en-US')}) so fat months refill the buffer that carries the lean ones.`;
+
+  // runwayMeaning
+  let runwayMeaning: string;
+  if (runway < 1.5) {
+    const days = Math.round(runway * 30);
+    runwayMeaning = `If work stopped, you've got about ${days} days. Building this cushion matters more than anything else right now.`;
+  } else if (runway >= 3) {
+    runwayMeaning = "You've got real breathing room — enough to ride out a dry spell or say no to bad work.";
+  } else {
+    const months = Math.round(runway * 10) / 10;
+    runwayMeaning = `About ${months} months of essentials covered — a decent buffer, with room to grow.`;
+  }
+
+  // outlookMeaning
+  let outlookMeaning: string;
+  if (outlook === 'running lean') {
+    outlookMeaning = "Income is light so far — but your buffer keeps the plan whole. Nothing needs to change yet.";
+  } else if (outlook === 'strong') {
+    outlookMeaning = "You're ahead this month. A good moment to bank the extra rather than let it drift into spending.";
+  } else {
+    outlookMeaning = "On track so far. Keep an eye on what's coming in.";
+  }
+
+  // taxMeaning
+  let taxMeaning = '';
+  const taxRegion = TAX_REGIONS[region];
+  if (taxRegion) {
+    const vatPct = (taxTurnover / taxRegion.vatThreshold) * 100;
+    if (vatPct >= 100) {
+      taxMeaning = "You've crossed the VAT registration line — action needed.";
+    } else if (vatPct >= 70) {
+      taxMeaning = `You're approaching the VAT threshold (${Math.round(vatPct)}% there) — nothing due yet, just so it doesn't surprise you.`;
+    }
+  }
+
+  // spendingMeaning
+  let spendingMeaning = '';
+  if (allocation.spending <= 0) {
+    spendingMeaning = "After essentials and tax set-aside, there's little left to spend freely — worth looking at fixed costs.";
+  } else if (allocation.spending < essentials * 0.3) {
+    spendingMeaning = "Free spending is tight this month.";
+  }
+
+  // volatilityMeaning
+  const volatilityMeaning = volatilityTrend(incomes).message;
+
+  // topInsight + topInsightLevel
+  let topInsight = '';
+  let topInsightLevel: 'warning' | 'tip' | 'success' = 'success';
+
+  const volTrend = volatilityTrend(incomes).trend;
+
+  if (runway < 1.5) {
+    topInsight = runwayMeaning;
+    topInsightLevel = 'warning';
+  } else if (allocation.spending <= 0) {
+    topInsight = spendingMeaning;
+    topInsightLevel = 'warning';
+  } else if (taxMeaning.includes('crossed')) {
+    topInsight = taxMeaning;
+    topInsightLevel = 'warning';
+  } else if (volTrend === 'choppier') {
+    topInsight = volatilityMeaning;
+    topInsightLevel = 'tip';
+  } else if (taxMeaning) {
+    topInsight = taxMeaning;
+    topInsightLevel = 'tip';
+  } else if (outlook === 'strong') {
+    topInsight = outlookMeaning;
+    topInsightLevel = 'tip';
+  } else if (runway >= 3) {
+    topInsight = runwayMeaning;
+    topInsightLevel = 'success';
+  } else {
+    topInsight = outlookMeaning;
+    topInsightLevel = 'success';
+  }
+
+  return {
+    paycheckWhy,
+    runwayMeaning,
+    outlookMeaning,
+    taxMeaning,
+    spendingMeaning,
+    volatilityMeaning,
+    topInsight,
+    topInsightLevel,
   };
 }
 

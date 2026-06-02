@@ -11,7 +11,8 @@
  * exposed via CustomEvents dispatched from page Docks.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { usePlan } from '@/lib/store';
 import { AddFlow } from './AddFlow';
 import { Assistant } from './Assistant';
@@ -27,8 +28,21 @@ export function GlobalOverlays() {
   const [addOpen, setAddOpen]   = useState(false);
   const [asstOpen, setAsstOpen] = useState(false);
   const { plan } = usePlan();
+  const pathname = usePathname();
+
+  // Close overlays when the route changes (prevents auto-open on navigation)
+  const isFirstMount = useRef(true);
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    setAddOpen(false);
+    setAsstOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
+    // Only open via explicit user-initiated events — never from mount or navigation
     function onOpenAdd()  { setAddOpen(true);  }
     function onOpenAsst() { setAsstOpen(true); }
 

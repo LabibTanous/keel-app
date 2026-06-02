@@ -74,6 +74,7 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
 
     return (
       <button
+        type="button"
         key={key}
         onClick={key === 'adviser' ? onAssistant : undefined}
         style={{ ...tabStyle, cursor: key === 'adviser' ? 'pointer' : 'default' }}
@@ -122,6 +123,7 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
 
         {/* Center + button — pine circle, sits above the pill */}
         <button
+          type="button"
           onClick={onAdd}
           style={{
             position: 'absolute',

@@ -47,6 +47,7 @@ export function PaycheckChart({
         {setMonths && (
           <div style={{ position: 'relative' }}>
             <button
+              type="button"
               onClick={() => setOpen((o) => !o)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
@@ -70,6 +71,7 @@ export function PaycheckChart({
               }}>
                 {opts.map((m) => (
                   <button
+                    type="button"
                     key={m}
                     onClick={() => { setMonths(m); setOpen(false); }}
                     style={{
@@ -113,11 +115,11 @@ export function PaycheckChart({
 
         {/* bars */}
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: 7 }}>
-          {history.map((d, i) => {
+          {history.map((d) => {
             const under = d.v < wage;
             return (
               <div
-                key={i}
+                key={d.m}
                 style={{
                   flex: 1,
                   height: `${(d.v / domainMax) * 100}%`,
@@ -135,9 +137,9 @@ export function PaycheckChart({
 
       {/* month labels */}
       <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-        {history.map((d, i) => (
+        {history.map((d) => (
           <div
-            key={i}
+            key={d.m}
             style={{ flex: 1, textAlign: 'center', fontSize: 9.5, color: 'var(--muted)', letterSpacing: 0.2 }}
           >
             {d.m}
