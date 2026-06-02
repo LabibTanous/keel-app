@@ -390,6 +390,13 @@ function HomeForward() {
         </div>
         <p style={{ margin: '12px 0 0', fontSize: 14.5, opacity: 0.82 }}>
           Your steady paycheck
+          {plan.range.provisional && (
+            <span style={{
+              display: 'inline-block', marginLeft: 8, fontSize: 11, fontWeight: 600,
+              letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 999,
+              background: 'rgba(255,255,255,0.18)', color: 'var(--hero-ink)',
+            }}>EARLY ESTIMATE</span>
+          )}
         </p>
         <Link href="/paycheck" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16,
@@ -404,8 +411,8 @@ function HomeForward() {
         </Link>
       </div>
 
-      {/* Top insight from interpretations (non-warning only) */}
-      {plan.interpretations.topInsightLevel !== 'warning' && (
+      {/* Top insight from interpretations — severity-ranked, warnings included */}
+      {plan.interpretations.topInsight && (
         <div className="rise" style={D(1)}>
           <InsightCard
             insight={plan.interpretations.topInsight}

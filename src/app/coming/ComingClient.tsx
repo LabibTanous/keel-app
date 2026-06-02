@@ -138,6 +138,12 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
             )}
           </div>
 
+          {item.conf === 'possible' && !isReceived && (
+            <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.4, color: 'var(--muted)', fontStyle: 'italic' }}>
+              Tracked only — hoped-for money doesn&apos;t size your safe paycheck until it&apos;s confirmed.
+            </div>
+          )}
+
           {warn && (
             <div style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--hairline)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <span style={{ color: 'var(--clay)', fontSize: 13, lineHeight: 1.3 }}>⚠</span>

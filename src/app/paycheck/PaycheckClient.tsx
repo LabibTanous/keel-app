@@ -277,14 +277,9 @@ export function PaycheckClient() {
               }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 5 }}>{b.head}</div>
                 <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>{b.body}</p>
-                {localWage === plan.paycheck && !plan.range.provisional && (
+                {localWage === plan.paycheck && (
                   <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--muted)', borderTop: '1px solid var(--hairline)', paddingTop: 10 }}>
-                    Set below your likely month ({money(plan.range.likely)}) so fat months refill the buffer that carries the lean ones — that&apos;s why it&apos;s lower than your best months.
-                  </p>
-                )}
-                {localWage === plan.paycheck && plan.range.provisional && (
-                  <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--muted)', borderTop: '1px solid var(--hairline)', paddingTop: 10 }}>
-                    An early estimate — log a few more months of income and this sharpens considerably.
+                    {plan.interpretations.paycheckWhy}
                   </p>
                 )}
               </div>

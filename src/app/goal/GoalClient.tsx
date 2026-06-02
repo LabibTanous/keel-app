@@ -25,8 +25,8 @@ function computeProjectedLabel(saved: number, target: number, monthly: number): 
   return projected.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-function GoalHero({ saved, target, monthly, behind, goalName }: {
-  saved: number; target: number; monthly: number; behind: boolean; goalName: string;
+function GoalHero({ saved, target, monthly, behind, goalName, provisional }: {
+  saved: number; target: number; monthly: number; behind: boolean; goalName: string; provisional?: boolean;
 }) {
   const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
   const projLabel = computeProjectedLabel(saved, target, monthly)
@@ -81,6 +81,11 @@ function GoalHero({ saved, target, monthly, behind, goalName }: {
             </>
             : 'Set a monthly buffer contribution to see your projected date.'}
       </p>
+      {provisional && saved < target && monthly > 0 && (
+        <p style={{ margin: '8px 0 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)', fontStyle: 'italic' }}>
+          This date is an early estimate — it sharpens as you log more months of income.
+        </p>
+      )}
     </Card>
   );
 }
@@ -317,6 +322,7 @@ export function GoalClient() {
               monthly={monthly}
               behind={behind}
               goalName={goalName}
+              provisional={plan.range.provisional}
             />
 
             {/* Edit goal inline form */}

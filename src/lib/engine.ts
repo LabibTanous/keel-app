@@ -585,15 +585,20 @@ export function interpret(
     region: string;
     taxMode?: 'none' | 'flat' | 'uae_ct';
     taxFlatRate?: number;
+    incomePattern?: string;
   },
   incomes: IncomeItem[],
 ): Interpretations {
   const { range, allocation, runway, outlook, taxTurnover } = planData;
-  const { essentials, taxMode, taxFlatRate } = profileData;
+  const { essentials, taxMode, taxFlatRate, incomePattern } = profileData;
+  const lumpy = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
 
+  // paycheckWhy — provisional first, then the B3 thin-buffer "why we trimmed", then normal.
   const paycheckWhy = range.provisional
     ? 'An early estimate — log more months of income and this sharpens.'
-    : `Set below your likely month (AED ${Math.round(range.likely).toLocaleString('en-US')}) so fat months refill the buffer that carries the lean ones.`;
+    : runway < 1
+      ? "Trimmed a little to help rebuild your buffer — with under a month of runway, your safe pay leans conservative until the cushion grows." // scenario B3
+      : `Set below your likely month (AED ${Math.round(range.likely).toLocaleString('en-US')}) so fat months refill the buffer that carries the lean ones.`;
 
   let runwayMeaning: string;
   if (runway < 1.5) {
@@ -611,6 +616,9 @@ export function interpret(
     outlookMeaning = "Income is light so far — but your buffer keeps the plan whole. Nothing needs to change yet.";
   } else if (outlook === 'strong') {
     outlookMeaning = "You're ahead this month. A good moment to bank the extra rather than let it drift into spending.";
+  } else if (lumpy) {
+    // scenario E4 — explain the calm state for lumpy earners
+    outlookMeaning = "A quiet month is normal on your pattern — your pay is set from the whole year, so an empty month here doesn't mean you're behind.";
   } else {
     outlookMeaning = "On track so far. Keep an eye on what's coming in.";
   }

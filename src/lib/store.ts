@@ -155,7 +155,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   const volTrend = volatilityTrend(profile.incomes);
   const interpretations = interpret(
     { range, paycheck: rawPaycheck, allocation, runway, outlook, trackedThisMonth, taxTurnover },
-    { essentials: profile.essentials, targetMonths: profile.targetMonths, region: profile.region, taxMode: profile.taxMode, taxFlatRate: profile.taxFlatRate },
+    { essentials: profile.essentials, targetMonths: profile.targetMonths, region: profile.region, taxMode: profile.taxMode, taxFlatRate: profile.taxFlatRate, incomePattern: profile.incomePattern },
     profile.incomes,
   );
 

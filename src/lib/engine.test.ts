@@ -287,6 +287,7 @@ const makeInterp = (over: {
   range?: IncomeRange; paycheck?: number; essentials?: number; region?: string;
   buffer?: number; taxTurnover?: number; outlook?: string; tracked?: number;
   taxMode?: 'none' | 'flat' | 'uae_ct'; taxFlatRate?: number; incomes?: IncomeItem[];
+  incomePattern?: string;
 } = {}) => {
   const range = over.range ?? computeRangeFromIncomes(DEMO);
   const paycheck = over.paycheck ?? 9750;
@@ -298,7 +299,7 @@ const makeInterp = (over: {
   const runway = computeRunway(buffer, essentials);
   return interpret(
     { range, paycheck, allocation, runway, outlook: over.outlook ?? 'on track', trackedThisMonth: over.tracked ?? 0, taxTurnover },
-    { essentials, targetMonths: 3, region, taxMode: over.taxMode, taxFlatRate: over.taxFlatRate },
+    { essentials, targetMonths: 3, region, taxMode: over.taxMode, taxFlatRate: over.taxFlatRate, incomePattern: over.incomePattern },
     over.incomes ?? [],
   );
 };
@@ -690,6 +691,27 @@ describe('Scenario E4 — lumpy earner: empty month between payments is not "lea
     const monthly = detectSignals(range, alloc, 0, 0.6, 'monthly');
     expect(lumpy.some(s => /running lean/i.test(s.title))).toBe(false);
     expect(monthly.some(s => /running lean/i.test(s.title))).toBe(true);
+  });
+});
+
+describe('Reflection — interpretation copy surfaces the right "why"', () => {
+  it('B3: thin buffer → paycheckWhy explains the trim', () => {
+    // scenario B3 (UI reflection) — runway < 1 month
+    const why = makeInterp({ buffer: 3000, essentials: 6000 }).paycheckWhy;
+    expect(why).toMatch(/rebuild your buffer/i);
+  });
+  it('B3: healthy buffer → normal paycheckWhy (no trim copy)', () => {
+    const why = makeInterp({ buffer: 50000, essentials: 6000 }).paycheckWhy;
+    expect(why).not.toMatch(/rebuild your buffer/i);
+  });
+  it('E4: lumpy on-track → outlookMeaning explains the quiet month', () => {
+    // scenario E4 (UI reflection)
+    const m = makeInterp({ outlook: 'on track', incomePattern: 'quarterly' }).outlookMeaning;
+    expect(m).toMatch(/quiet month is normal/i);
+  });
+  it('E4: monthly on-track → plain outlook copy (no lumpy line)', () => {
+    const m = makeInterp({ outlook: 'on track', incomePattern: 'monthly' }).outlookMeaning;
+    expect(m).not.toMatch(/quiet month is normal/i);
   });
 });
 
