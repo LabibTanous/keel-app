@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getFullProfile, saveFullProfile, saveGoals, saveBigPayments } from "@/lib/db"
+import { getAllUserData, saveFullProfile, saveGoals, saveBigPayments, saveExpenses } from "@/lib/db"
 
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const profileJson = await getFullProfile(session.user.id)
-  return NextResponse.json({ profileJson: profileJson ?? null })
+  const data = await getAllUserData(session.user.id)
+  return NextResponse.json(data ?? { profileJson: null, goalsJson: null, bigPaymentsJson: null, expensesJson: null })
 }
 
 export async function PATCH(request: Request) {
@@ -25,6 +25,9 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.bigPaymentsJson === "string") {
       ops.push(saveBigPayments(session.user.id, body.bigPaymentsJson))
+    }
+    if (typeof body.expensesJson === "string") {
+      ops.push(saveExpenses(session.user.id, body.expensesJson))
     }
 
     if (ops.length === 0) {

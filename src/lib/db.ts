@@ -177,6 +177,21 @@ export async function saveBigPayments(userId: string, bigPayments: string): Prom
   await client.mutation(api.users.saveBigPayments, { userId, bigPayments });
 }
 
+export async function saveExpenses(userId: string, expenses: string): Promise<void> {
+  const client = getConvexClient();
+  await client.mutation(api.users.saveExpenses, { userId, expenses });
+}
+
+export async function getAllUserData(userId: string): Promise<{
+  profileJson: string | null;
+  goalsJson: string | null;
+  bigPaymentsJson: string | null;
+  expensesJson: string | null;
+} | null> {
+  const client = getConvexClient();
+  return await client.query(api.users.getAllUserData, { userId });
+}
+
 // ─── iOS Shortcut log token ───────────────────────────────────────────────────
 
 export async function getOrCreateLogToken(userId: string): Promise<string> {

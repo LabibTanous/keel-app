@@ -203,10 +203,12 @@ type Action =
   | { type: 'SET_PROFILE'; payload: Profile }
   | { type: 'ADD_INCOME'; payload: IncomeItem }
   | { type: 'ADD_BIG_PAYMENT'; payload: BigPayment }
+  | { type: 'SET_BIG_PAYMENTS'; payload: BigPayment[] }
   | { type: 'SET_PAYCHECK'; payload: number }
   | { type: 'SET_TRACKED'; payload: number }
   | { type: 'SET_USER_GOALS'; payload: UserGoal[] }
   | { type: 'ADD_EXPENSE'; payload: ExpenseItem }
+  | { type: 'SET_EXPENSES'; payload: ExpenseItem[] }
   | { type: 'RESET' };
 
 function reducer(state: State, action: Action): State {
@@ -229,6 +231,8 @@ function reducer(state: State, action: Action): State {
     }
     case 'ADD_BIG_PAYMENT':
       return { ...state, bigPayments: [...state.bigPayments, action.payload] };
+    case 'SET_BIG_PAYMENTS':
+      return { ...state, bigPayments: action.payload };
     case 'SET_PAYCHECK':
       return {
         ...state,
@@ -240,6 +244,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, userGoals: action.payload };
     case 'ADD_EXPENSE':
       return { ...state, expenses: [...state.expenses, action.payload] };
+    case 'SET_EXPENSES':
+      return { ...state, expenses: action.payload };
     case 'RESET':
       return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
     default:
@@ -297,34 +303,36 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'SET_PROFILE', payload: loaded.profile });
     if (loaded.trackedThisMonth) dispatch({ type: 'SET_TRACKED', payload: loaded.trackedThisMonth });
     if (loaded.userGoals?.length) dispatch({ type: 'SET_USER_GOALS', payload: loaded.userGoals });
-    if (loaded.expenses?.length) {
-      for (const e of loaded.expenses) {
-        dispatch({ type: 'ADD_EXPENSE', payload: e });
-      }
-    }
+    if (loaded.bigPayments?.length) dispatch({ type: 'SET_BIG_PAYMENTS', payload: loaded.bigPayments });
+    if (loaded.expenses?.length) dispatch({ type: 'SET_EXPENSES', payload: loaded.expenses });
 
-    // Try to hydrate from Convex only if a session exists.
-    // localStorage is the fast-path; Convex is a background update.
+    // Convex is authoritative — hydrate all blobs if a session exists.
     fetch('/api/auth/session')
       .then((r) => (r.ok ? r.json() : null))
       .then((session) => {
-        if (!session?.user?.id) return; // No session — stay on localStorage, no noise
+        if (!session?.user?.id) return;
         return fetch('/api/user')
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
-            if (data?.profileJson) {
+            if (!data) return;
+            if (data.profileJson) {
               try {
-                const serverProfile = JSON.parse(data.profileJson) as Profile;
-                if (serverProfile?.incomes && Array.isArray(serverProfile.incomes)) {
-                  dispatch({ type: 'SET_PROFILE', payload: serverProfile });
-                }
-              } catch {
-                // Ignore malformed JSON
-              }
+                const p = JSON.parse(data.profileJson) as Profile;
+                if (p?.incomes && Array.isArray(p.incomes)) dispatch({ type: 'SET_PROFILE', payload: p });
+              } catch { /* ignore */ }
+            }
+            if (data.goalsJson) {
+              try { dispatch({ type: 'SET_USER_GOALS', payload: JSON.parse(data.goalsJson) }); } catch { /* ignore */ }
+            }
+            if (data.bigPaymentsJson) {
+              try { dispatch({ type: 'SET_BIG_PAYMENTS', payload: JSON.parse(data.bigPaymentsJson) }); } catch { /* ignore */ }
+            }
+            if (data.expensesJson) {
+              try { dispatch({ type: 'SET_EXPENSES', payload: JSON.parse(data.expensesJson) }); } catch { /* ignore */ }
             }
           });
       })
-      .catch(() => {}); // No session or server error — stay on localStorage
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -339,7 +347,12 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         return fetch('/api/user', {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ profileJson: JSON.stringify(state.profile) }),
+          body: JSON.stringify({
+            profileJson: JSON.stringify(state.profile),
+            goalsJson: JSON.stringify(state.userGoals),
+            bigPaymentsJson: JSON.stringify(state.bigPayments),
+            expensesJson: JSON.stringify(state.expenses),
+          }),
         });
       })
       .catch(() => {}); // Silently ignore failures

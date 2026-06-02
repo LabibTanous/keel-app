@@ -199,6 +199,35 @@ export const saveBigPayments = mutation({
   },
 });
 
+export const saveExpenses = mutation({
+  args: { userId: v.string(), expenses: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) return;
+    await ctx.db.patch(existing._id, { expenses: args.expenses });
+  },
+});
+
+export const getAllUserData = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!row) return null;
+    return {
+      profileJson: row.profileJson ?? null,
+      goalsJson: row.goals ?? null,
+      bigPaymentsJson: row.bigPayments ?? null,
+      expensesJson: row.expenses ?? null,
+    };
+  },
+});
+
 // ── Income entries ─────────────────────────────────────────────────────────────
 
 export const addIncomeEntry = mutation({
@@ -303,18 +332,6 @@ export const getUserByEmail = query({
       .query("keel_users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
-  },
-});
-
-export const setUserPassword = mutation({
-  args: { userId: v.string(), passwordHash: v.string() },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("keel_users")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
-    if (!existing) throw new Error(`User ${args.userId} not found`);
-    await ctx.db.patch(existing._id, { passwordHash: args.passwordHash });
   },
 });
 
