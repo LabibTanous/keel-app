@@ -22,6 +22,8 @@ export default defineSchema({
     goalMonthly: v.optional(v.number()),
     profileJson: v.optional(v.string()),
     passwordHash: v.optional(v.string()),
+    goals: v.optional(v.string()),
+    bigPayments: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
     .index("by_logToken", ["logToken"])

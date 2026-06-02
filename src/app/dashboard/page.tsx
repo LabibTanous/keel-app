@@ -332,10 +332,7 @@ const D = (i: number): React.CSSProperties => ({ animationDelay: `${i * 80}ms` }
 
 function HomeForward() {
   const { plan, profile } = usePlan();
-  const { range, paycheck, allocation, trackedThisMonth, outlook } = plan;
-
-  const outlookKey = (outlook as OutlookKey) in OUTLOOK_CFG ? (outlook as OutlookKey) : 'on track';
-  const trackColor = OUTLOOK_CFG[outlookKey].track;
+  const { paycheck, allocation, trackedThisMonth } = plan;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -370,35 +367,18 @@ function HomeForward() {
         </Link>
       </div>
 
-      {/* Signal / outlook */}
-      <div className="rise" style={D(1)}>
-        <SignalCard outlook={outlook} interpretation={plan.interpretations.outlookMeaning} />
-      </div>
-
-      {/* Top insight from interpretations */}
-      <div className="rise" style={D(1)}>
-        <InsightCard
-          insight={plan.interpretations.topInsight}
-          level={plan.interpretations.topInsightLevel}
-        />
-      </div>
-
-      {/* Range band */}
-      <div className="rise" style={D(2)}>
-        <Card>
-          <RangeBand
-            lean={range.lean}
-            likely={range.likely}
-            strong={range.strong}
-            paycheck={paycheck}
-            tracking={trackedThisMonth}
-            trackColor={trackColor}
+      {/* Top insight from interpretations (non-warning only) */}
+      {plan.interpretations.topInsightLevel !== 'warning' && (
+        <div className="rise" style={D(1)}>
+          <InsightCard
+            insight={plan.interpretations.topInsight}
+            level={plan.interpretations.topInsightLevel}
           />
-        </Card>
-      </div>
+        </div>
+      )}
 
-      {/* Allocation */}
-      <div className="rise" style={D(3)}>
+      {/* Where it goes — compact allocation */}
+      <div className="rise" style={D(2)}>
         <Card>
           <AllocationSection
             paycheck={paycheck}
@@ -412,14 +392,35 @@ function HomeForward() {
         </Card>
       </div>
 
-      {/* Big payments */}
-      <div className="rise" style={D(4)}>
-        <BigPaymentsForward />
+      {/* This month row */}
+      <div className="rise" style={{ ...D(3), display: 'flex', gap: 10 }}>
+        <div style={{
+          flex: 1, background: 'var(--surface)', borderRadius: 'var(--r-card)',
+          padding: '14px var(--pad)', boxShadow: 'var(--shadow-sm)',
+          border: '1px solid var(--hairline)',
+        }}>
+          <div className="smallcaps" style={{ fontSize: 10, marginBottom: 6 }}>Earned</div>
+          <div className="serif tnum" style={{ fontSize: 22, color: 'var(--mint)' }}>
+            {trackedThisMonth > 0 ? `≈ AED ${Math.round(trackedThisMonth).toLocaleString()}` : '—'}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>this month so far</div>
+        </div>
+        <div style={{
+          flex: 1, background: 'var(--surface)', borderRadius: 'var(--r-card)',
+          padding: '14px var(--pad)', boxShadow: 'var(--shadow-sm)',
+          border: '1px solid var(--hairline)',
+        }}>
+          <div className="smallcaps" style={{ fontSize: 10, marginBottom: 6 }}>Left to spend</div>
+          <div className="serif tnum" style={{ fontSize: 22, color: 'var(--pine)' }}>
+            {`AED ${Math.round(plan.discretionary).toLocaleString()}`}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>discretionary</div>
+        </div>
       </div>
 
       {/* Afford check */}
       <Link className="rise" href="/afford" style={{
-        ...D(5),
+        ...D(4),
         display: 'flex', alignItems: 'center', gap: 13, textDecoration: 'none',
         background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)',
         padding: '15px var(--pad)', border: '1px solid var(--hairline)',

@@ -175,6 +175,30 @@ export const getFullProfile = query({
   },
 });
 
+export const saveGoals = mutation({
+  args: { userId: v.string(), goals: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) return;
+    await ctx.db.patch(existing._id, { goals: args.goals });
+  },
+});
+
+export const saveBigPayments = mutation({
+  args: { userId: v.string(), bigPayments: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) return;
+    await ctx.db.patch(existing._id, { bigPayments: args.bigPayments });
+  },
+});
+
 // ── Income entries ─────────────────────────────────────────────────────────────
 
 export const addIncomeEntry = mutation({

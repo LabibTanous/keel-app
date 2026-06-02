@@ -116,7 +116,7 @@ const FORM_CONFIGS: FormConfigs = {
   payment: {
     title: 'A big payment ahead',
     cta: 'Add to timeline',
-    fields: [['What for', 'e.g. Quarterly taxes'], ['Amount', 'AED 0'], ['Due', 'Jul 15']],
+    fields: [['What for', 'e.g. Car insurance'], ['Amount', 'AED 0'], ['Due', 'Jul 15']],
     segLabel: 'Set aside for it?',
     seg: [{ value: 'on', label: 'Automatically' }, { value: 'off', label: 'Not yet' }],
     note: "Keel will quietly set money aside before it lands.",
@@ -124,7 +124,7 @@ const FORM_CONFIGS: FormConfigs = {
   goal: {
     title: 'Start a goal',
     cta: 'Start saving',
-    fields: [['Name it', 'e.g. Three-month runway'], ['Target', 'AED 0'], ['By when', 'Optional']],
+    fields: [['Name it', 'e.g. House down payment'], ['Target', 'AED 0'], ['By when', 'Optional']],
     segLabel: null,
     seg: null,
     note: "Keel charts a calm path from your buffer.",

@@ -7,6 +7,7 @@ import { PAY_STATUS, Card, Disclaimer, Segmented, money, fmtFx, approxAED, Cur }
 import type { IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
 import { Dock } from '@/components/keel/Dock';
+import { KEEL_OPEN_ADD } from '@/components/keel/GlobalOverlays';
 
 // ── Confidence pill ────────────────────────────────────────────────────────────
 
@@ -227,10 +228,21 @@ export function ComingClient() {
   const allItems: TimelineItemData[] = profile.incomes.map((inc, i) => incomeToTimeline(inc, i));
   const [counted, setCounted] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
-    profile.incomes.forEach((_inc, i) => { init[`inc-${i}`] = false; });
+    // Default "Count it" to ON for confirmed items, OFF for others
+    profile.incomes.forEach((inc, i) => { init[`inc-${i}`] = inc.confidence === 'confirmed'; });
     return init;
   });
-  const [received, setReceived] = useState<Record<string, boolean>>({});
+  // Pre-populate received state: confirmed items from current or past months are already received
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [received, setReceived] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    profile.incomes.forEach((inc, i) => {
+      if (inc.confidence === 'confirmed' && inc.date <= currentMonth + '-31') {
+        init[`inc-${i}`] = true;
+      }
+    });
+    return init;
+  });
 
   const aedOf = (it: TimelineItemData) => toAED(it.amt, it.ccy);
 
@@ -413,7 +425,7 @@ export function ComingClient() {
 
       <Dock
         active="coming"
-        onAdd={() => {}}
+        onAdd={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
         links={{ home: '/dashboard', coming: '/coming', goal: '/goal' }}
       />
     </div>

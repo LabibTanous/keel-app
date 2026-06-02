@@ -1,11 +1,12 @@
 'use client';
 
 /**
- * GoalClient.tsx — Saving goal screen client component.
+ * GoalClient.tsx — Goals screen client component.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { usePlan } from '@/lib/store';
+import type { UserGoal } from '@/lib/store';
 import { goalTradeoff } from '@/lib/engine';
 import { PAY_STATUS, money, moneyK, Card, Cur } from '@/components/keel/ui';
 import { GoalChart } from '@/components/keel/GoalChart';
@@ -213,10 +214,23 @@ function StatsRow({
   );
 }
 
+const GOAL_OPTIONS = [
+  'Emergency fund',
+  'Home / property',
+  'Vacation',
+  'Car',
+  'Education',
+  'New business',
+  'Retirement',
+  'Other',
+];
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function GoalClient() {
-  const { plan, profile } = usePlan();
+  const { plan, profile, setUserGoals } = usePlan();
+  const [editing, setEditing] = useState(false);
+  const [editGoal, setEditGoal] = useState<UserGoal | null>(null);
 
   const { userGoals } = plan;
   const primaryGoal = userGoals && userGoals.length > 0 ? userGoals[0] : null;
@@ -234,6 +248,28 @@ export function GoalClient() {
   const targetAmount = profile.essentials * profile.targetMonths;
   const tradeoff = goalTradeoff(targetAmount, profile.bufferBalance, plan.allocation.buffer, plan.allocation.spending);
 
+  function startEdit() {
+    setEditGoal(
+      primaryGoal
+        ? { ...primaryGoal }
+        : { name: 'Three-month runway', custom: '', targetAmt: target, targetDate: '' }
+    );
+    setEditing(true);
+  }
+
+  function saveEdit() {
+    if (!editGoal) return;
+    const updated: UserGoal[] = [editGoal, ...additionalGoals];
+    setUserGoals(updated);
+    setEditing(false);
+    setEditGoal(null);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditGoal(null);
+  }
+
   return (
     <div
       className="stage"
@@ -248,9 +284,9 @@ export function GoalClient() {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '60px 18px 20px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', margin: '6px 0 22px' }}>
-          <div className="serif" style={{ fontSize: 33, color: 'var(--ink)', lineHeight: 1.05 }}>Saving</div>
+          <div className="serif" style={{ fontSize: 33, color: 'var(--ink)', lineHeight: 1.05 }}>Goals</div>
           <p style={{ margin: '9px auto 0', maxWidth: 280, fontSize: 13.5, lineHeight: 1.45, color: 'var(--muted)' }}>
-            What you&apos;re climbing toward — and the big costs on the way.
+            Your goals and big costs ahead.
           </p>
         </div>
 
@@ -271,6 +307,125 @@ export function GoalClient() {
               behind={behind}
               goalName={goalName}
             />
+
+            {/* Edit goal inline form */}
+            {editing && editGoal ? (
+              <div style={{
+                marginTop: 10,
+                background: 'var(--surface)',
+                border: '1px solid var(--hairline)',
+                borderRadius: 16,
+                padding: '16px 15px',
+              }}>
+                <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 12 }}>Edit goal</div>
+
+                {/* Goal name */}
+                <div style={{ marginBottom: 10 }}>
+                  <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>Goal name</div>
+                  <select
+                    value={editGoal.name}
+                    onChange={(e) => setEditGoal({ ...editGoal, name: e.target.value, custom: '' })}
+                    style={{
+                      width: '100%', padding: '10px 13px', borderRadius: 10, marginBottom: 0,
+                      border: 'none', background: 'var(--surface-2)',
+                      fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--ink)',
+                      cursor: 'pointer', appearance: 'none',
+                    }}
+                  >
+                    {GOAL_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  {editGoal.name === 'Other' && (
+                    <input
+                      type="text"
+                      value={editGoal.custom}
+                      onChange={(e) => setEditGoal({ ...editGoal, custom: e.target.value })}
+                      placeholder="Describe your goal"
+                      style={{
+                        width: '100%', marginTop: 8, padding: '10px 13px', borderRadius: 10,
+                        border: 'none', background: 'var(--surface-2)',
+                        fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--ink)',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* Target amount */}
+                <div style={{ marginBottom: 10 }}>
+                  <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>Target amount</div>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'var(--surface-2)', borderRadius: 10, padding: '0 13px',
+                  }}>
+                    <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>AED</span>
+                    <input
+                      aria-label="Target amount"
+                      inputMode="numeric"
+                      value={editGoal.targetAmt > 0 ? String(editGoal.targetAmt) : ''}
+                      onChange={(e) => setEditGoal({ ...editGoal, targetAmt: parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0 })}
+                      placeholder="0"
+                      style={{
+                        flex: 1, minWidth: 0, border: 'none', background: 'none',
+                        fontFamily: 'var(--font-ui)', fontSize: 16, color: 'var(--ink)',
+                        padding: '12px 0',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Target date */}
+                <div style={{ marginBottom: 14 }}>
+                  <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>Target date</div>
+                  <input
+                    type="month"
+                    value={editGoal.targetDate}
+                    onChange={(e) => setEditGoal({ ...editGoal, targetDate: e.target.value })}
+                    style={{
+                      width: '100%', padding: '10px 13px', borderRadius: 10,
+                      border: 'none', background: 'var(--surface-2)',
+                      fontFamily: 'var(--font-ui)', fontSize: 14, color: editGoal.targetDate ? 'var(--ink)' : 'var(--muted)',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    style={{
+                      flex: 1, padding: '11px 0', borderRadius: 999, border: 'none',
+                      background: 'var(--pine)', color: 'var(--on-pine)',
+                      fontFamily: 'var(--font-ui)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >Save</button>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    style={{
+                      flex: 1, padding: '11px 0', borderRadius: 999,
+                      border: '1px solid var(--hairline)', background: 'var(--surface)',
+                      fontFamily: 'var(--font-ui)', fontSize: 14, fontWeight: 600,
+                      color: 'var(--muted)', cursor: 'pointer',
+                    }}
+                  >Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  style={{
+                    background: 'var(--surface-2)', border: 'none', borderRadius: 999,
+                    padding: '7px 14px', fontFamily: 'var(--font-ui)', fontSize: 12.5,
+                    fontWeight: 600, color: 'var(--muted)', cursor: 'pointer',
+                  }}
+                >Edit goal</button>
+              </div>
+            )}
             {additionalGoals.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div className="smallcaps" style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>Other goals</div>

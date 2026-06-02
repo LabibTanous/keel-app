@@ -30,7 +30,7 @@ type TabDef = [TabKey, string, React.ComponentType<{ size?: number; sw?: number 
 const TABS: TabDef[] = [
   ['home',    'Home',    IconHome],
   ['coming',  'Income',  IconComing],
-  ['goal',    'Saving',  IconGoal],
+  ['goal',    'Goals',   IconGoal],
   ['adviser', 'Adviser', IconSpark],
 ];
 

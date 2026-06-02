@@ -200,14 +200,20 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'SET_PROFILE':
       return { ...state, profile: action.payload };
-    case 'ADD_INCOME':
+    case 'ADD_INCOME': {
+      const newIncomes = [...state.profile.incomes, action.payload];
+      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+      const isThisMonth = action.payload.date.startsWith(currentMonth);
+      const isConfirmed = action.payload.confidence === 'confirmed';
+      const additionalTracked = isThisMonth && isConfirmed
+        ? toAED(action.payload.amount, action.payload.currency)
+        : 0;
       return {
         ...state,
-        profile: {
-          ...state.profile,
-          incomes: [...state.profile.incomes, action.payload],
-        },
+        trackedThisMonth: state.trackedThisMonth + additionalTracked,
+        profile: { ...state.profile, incomes: newIncomes },
       };
+    }
     case 'ADD_BIG_PAYMENT':
       return { ...state, bigPayments: [...state.bigPayments, action.payload] };
     case 'SET_PAYCHECK':

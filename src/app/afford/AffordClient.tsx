@@ -223,7 +223,7 @@ function EffectOnPlan({ cost, spendingLeft, bufferBalance, safeFloor, verdict, m
       {/* left to spend */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 9 }}>
-          <span style={{ fontSize: 14, color: 'var(--ink)' }}>Left to spend this month</span>
+          <span style={{ fontSize: 14, color: 'var(--ink)' }}>Left in discretionary budget</span>
           <span>
             <span className="serif tnum" style={{ fontSize: 18, color: verdict === 'fits' ? 'var(--ink)' : 'var(--clay)' }}>{money(newSpendingLeft)}</span>
             <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 6 }}>was {money(spendingLeft)}</span>
@@ -271,7 +271,7 @@ export function AffordClient() {
   const [amount, setAmount] = useState(0);
   const [item, setItem] = useState('');
 
-  const spendingLeft = plan.allocation.spending;
+  const spendingLeft = plan.discretionary ?? plan.allocation.spending;
   const bufferBalance = profile.bufferBalance;
   const safeFloor = profile.essentials;
 
@@ -355,7 +355,7 @@ export function AffordClient() {
               </div>
               <div className="rise" style={{ animationDelay: '210ms' }}>
                 <p style={{ margin: '2px 8px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', textAlign: 'center' }}>
-                  Checked against your plan — what&apos;s left to spend and your buffer — not just your bank balance.
+                  Checked against your discretionary budget — after goals and reserves are already set aside — not just your bank balance.
                 </p>
               </div>
               <div className="rise" style={{ animationDelay: '240ms' }}>

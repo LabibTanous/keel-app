@@ -312,7 +312,7 @@ export function computeAfford(
     return {
       verdict: 'fits',
       label: 'Fits the plan',
-      reason: `Comes out of this month's free-to-spend. You'd have ${Math.round(spendingLeft - cost).toLocaleString('en-US')} AED left and your plan is untouched.`,
+      reason: `Comes out of your discretionary budget — after goals and reserves are already set aside. You'd have ${Math.round(spendingLeft - cost).toLocaleString('en-US')} AED left and your plan is untouched.`,
       freeRemaining: spendingLeft - cost,
     };
   }
@@ -321,7 +321,7 @@ export function computeAfford(
     return {
       verdict: 'dips',
       label: 'Possible — dips into buffer',
-      reason: `It's ${Math.round(cost - spendingLeft).toLocaleString('en-US')} AED over your free-to-spend, so it'd come partly from your buffer. Doable, but it slows your runway.`,
+      reason: `It's ${Math.round(cost - spendingLeft).toLocaleString('en-US')} AED over your discretionary budget, so it'd come partly from your buffer. Doable, but it slows your runway.`,
       freeRemaining: spendingLeft - cost,
     };
   }
@@ -329,7 +329,7 @@ export function computeAfford(
   return {
     verdict: 'break',
     label: 'Would break the plan',
-    reason: `This exceeds your free-to-spend and safe buffer combined. Worth waiting for a strong month or saving toward it.`,
+    reason: `This exceeds your discretionary budget and safe buffer combined. Worth waiting for a strong month or saving toward it.`,
     freeRemaining: spendingLeft - cost,
   };
 }

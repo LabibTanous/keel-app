@@ -48,6 +48,12 @@ interface ObBigPayment {
   dueDate: string;
 }
 
+interface ObSubscription {
+  name: string;
+  amt: string;
+  billingDay: string;
+}
+
 interface ObGoal {
   name: string;
   custom: string;
@@ -60,13 +66,15 @@ interface ObData {
   regionCode: string;
   ccy: string;
   rent: string;
+  rentDueDay: string;
   bills: string;
+  billsDueDay: string;
   savingsCash: string;
   savingsInvestments: string;
   savingsProperty: string;
   savingsOther: string;
   transport: string;
-  subscriptions: string;
+  subscriptionsList: ObSubscription[];
   otherExpenses: string;
   incomes: IncomeRow[];
   goals: ObGoal[];
@@ -81,13 +89,15 @@ const INITIAL_DATA: ObData = {
   regionCode: 'AE',
   ccy: 'AED',
   rent: '',
+  rentDueDay: '1',
   bills: '',
+  billsDueDay: '1',
   savingsCash: '',
   savingsInvestments: '',
   savingsProperty: '',
   savingsOther: '',
   transport: '',
-  subscriptions: '',
+  subscriptionsList: [],
   otherExpenses: '',
   incomes: [
     { amt: '', ccy: 'AED', recurring: null, months: 6, dayOfMonth: 1 },
@@ -328,40 +338,112 @@ function EssentialsStep({
 }) {
   const rent = parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0;
   const bills = parseInt(data.bills.replace(/[^0-9]/g, ''), 10) || 0;
-  const total = rent + bills + (parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0) + (parseInt(data.subscriptions.replace(/[^0-9]/g, ''), 10) || 0) + (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
+  const transport = parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0;
+  const subTotal = data.subscriptionsList.reduce((s, r) => s + (parseInt(r.amt.replace(/[^0-9]/g, ''), 10) || 0), 0);
+  const other = parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0;
+  const total = rent + bills + transport + subTotal + other;
+
+  function addSub() {
+    set({ subscriptionsList: [...data.subscriptionsList, { name: '', amt: '', billingDay: '1' }] });
+  }
+  function updateSub(i: number, patch: Partial<ObSubscription>) {
+    set({ subscriptionsList: data.subscriptionsList.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  }
+  function removeSub(i: number) {
+    set({ subscriptionsList: data.subscriptionsList.filter((_, j) => j !== i) });
+  }
+
+  const dayInput = (value: string, onChange: (v: string) => void) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+      <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Due on the</span>
+      <input
+        type="number" min={1} max={31}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: 52, border: 'none', background: 'var(--surface-2)', borderRadius: 8,
+          padding: '7px 10px', fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--ink)',
+        }}
+      />
+      <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>of each month</span>
+    </div>
+  );
+
   return (
     <div>
       <StepIntro
         title="What does a month cost to keep going?"
-        sub="Your essentials — rent and the bills that don't stop. Keel makes sure your paycheck always clears these."
+        sub="Your essentials — the bills that don't stop. Keel always makes sure your paycheck clears these first."
       />
+
       <ObField label="Rent / housing">
         <ObAmount value={data.rent} onChange={(v) => set({ rent: v })} />
+        {rent > 0 && dayInput(data.rentDueDay, (v) => set({ rentDueDay: v }))}
       </ObField>
+
       <ObField label="Bills & utilities">
         <ObAmount value={data.bills} onChange={(v) => set({ bills: v })} />
+        {bills > 0 && dayInput(data.billsDueDay, (v) => set({ billsDueDay: v }))}
       </ObField>
+
       <ObField label="Transport / commute">
         <ObAmount value={data.transport} onChange={(v) => set({ transport: v })} placeholder="0 (optional)" />
       </ObField>
-      <ObField label="Subscriptions">
-        <ObAmount value={data.subscriptions} onChange={(v) => set({ subscriptions: v })} placeholder="0 (optional)" />
-      </ObField>
+
+      {/* Subscriptions — dynamic list */}
+      <div style={{ marginBottom: 14 }}>
+        <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 8 }}>Subscriptions</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {data.subscriptionsList.map((r, i) => (
+            <div key={i} style={{
+              background: 'var(--surface)', border: '1px solid var(--hairline)',
+              borderRadius: 14, padding: '12px 13px',
+            }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={r.name}
+                  onChange={(e) => updateSub(i, { name: e.target.value })}
+                  placeholder="e.g. Netflix, Spotify…"
+                  style={{
+                    flex: 1, border: 'none', background: 'var(--surface-2)', borderRadius: 8,
+                    padding: '9px 12px', fontFamily: 'var(--font-ui)', fontSize: 13.5, color: 'var(--ink)',
+                  }}
+                />
+                <button
+                  type="button" onClick={() => removeSub(i)}
+                  style={{
+                    width: 28, height: 28, borderRadius: '50%', border: 'none',
+                    background: 'var(--surface-2)', cursor: 'pointer', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--muted)', fontSize: 15, marginTop: 4,
+                  }}
+                >×</button>
+              </div>
+              <ObAmount value={r.amt} onChange={(v) => updateSub(i, { amt: v })} ccy={data.ccy} placeholder="Amount / month" />
+              {dayInput(r.billingDay, (v) => updateSub(i, { billingDay: v }))}
+            </div>
+          ))}
+        </div>
+        <button
+          type="button" onClick={addSub}
+          style={{
+            marginTop: 8, background: 'var(--pine-soft)', color: 'var(--pine)',
+            border: 'none', borderRadius: 999, padding: '8px 14px',
+            fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+          }}
+        >+ Add subscription</button>
+      </div>
+
       <ObField label="Other fixed costs">
         <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} placeholder="0 (optional)" />
       </ObField>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          background: 'var(--surface)',
-          border: '1px solid var(--hairline)',
-          borderRadius: 14,
-          padding: '14px 16px',
-          marginTop: 4,
-        }}
-      >
+
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        background: 'var(--surface)', border: '1px solid var(--hairline)',
+        borderRadius: 14, padding: '14px 16px', marginTop: 4,
+      }}>
         <span style={{ fontSize: 14, color: 'var(--ink)' }}>Essentials a month</span>
         <span className="serif tnum" style={{ fontSize: 22, color: 'var(--pine)' }}>
           <Cur n={total} />
@@ -978,7 +1060,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
     (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
     (parseInt(data.bills.replace(/[^0-9]/g, ''), 10) || 0) +
     (parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0) +
-    (parseInt(data.subscriptions.replace(/[^0-9]/g, ''), 10) || 0) +
+    data.subscriptionsList.reduce((s, r) => s + (parseInt(r.amt.replace(/[^0-9]/g, ''), 10) || 0), 0) +
     (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
   const bufferBalance = computeBufferBalance(data);
 
@@ -1241,7 +1323,7 @@ function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
 type StepProps = { data: ObData; set: (patch: Partial<ObData>) => void };
 function ReadyWrapper(props: StepProps) { return <ReadyStep data={props.data} set={props.set} />; }
 
-const OB_STEPS = ['region', 'essentials', 'savings', 'goals', 'upcoming', 'income', 'ready'] as const;
+const OB_STEPS = ['region', 'income', 'essentials', 'savings', 'goals', 'upcoming', 'ready'] as const;
 type StepKey = typeof OB_STEPS[number];
 
 export function OnboardingClient(): React.ReactElement {
@@ -1298,7 +1380,7 @@ export function OnboardingClient(): React.ReactElement {
       (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.bills.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0) +
-      (parseInt(data.subscriptions.replace(/[^0-9]/g, ''), 10) || 0) +
+      data.subscriptionsList.reduce((s, r) => s + (parseInt(r.amt.replace(/[^0-9]/g, ''), 10) || 0), 0) +
       (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
 
     const bufferBalance = computeBufferBalance(data);
@@ -1348,14 +1430,15 @@ export function OnboardingClient(): React.ReactElement {
       setUserGoals(userGoals);
     }
 
-    // Register big payments from onboarding
+    // Build big payments list before adding to store so we can persist them too
+    const bigPaymentItems: { id: string; m: string; pos: number; name: string; amt: number; status: 'saving' } [] = [];
     for (const bp of data.bigPayments) {
       const amt = parseInt(bp.amt.replace(/[^0-9]/g, ''), 10);
       if (bp.name.trim() && amt > 0) {
         const dueMon = bp.dueDate
           ? new Date(bp.dueDate + '-01').toLocaleString('en', { month: 'short' })
           : 'Soon';
-        addBigPayment({
+        bigPaymentItems.push({
           id: `ob-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           m: dueMon,
           pos: 0.5,
@@ -1365,10 +1448,30 @@ export function OnboardingClient(): React.ReactElement {
         });
       }
     }
+    for (const bp of bigPaymentItems) {
+      addBigPayment(bp);
+    }
+
+    // Persist goals and big payments to Convex (best-effort, non-blocking)
+    const persistPayload: Record<string, string> = {};
+    if (userGoals.length > 0) {
+      persistPayload.goalsJson = JSON.stringify(userGoals);
+    }
+    if (bigPaymentItems.length > 0) {
+      persistPayload.bigPaymentsJson = JSON.stringify(bigPaymentItems);
+    }
+    if (Object.keys(persistPayload).length > 0) {
+      fetch('/api/user', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(persistPayload),
+      }).catch(() => {}); // Best-effort — don't block navigation on failure
+    }
+
     router.push('/paycheck');
   }
 
-  const ctaLabel = isLast ? 'See your paycheck' : step === 'income' ? 'Build my plan' : 'Continue';
+  const ctaLabel = isLast ? 'See your paycheck' : step === 'upcoming' ? 'Build my plan' : 'Continue';
 
   const StepView: React.ComponentType<StepProps> = {
     region: RegionStep,

@@ -312,33 +312,82 @@ export function PaycheckClient() {
               />
             </div>
 
-            {/* Goal savings / big payment rows */}
+            {/* Your savings plan — shown when goals or big payments exist */}
             {(plan.monthlyGoalContrib > 0 || plan.monthlyBigPaymentReserve > 0) && (
               <div className="rise" style={{ animationDelay: '195ms' }}>
-                <Card>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                    <span className="smallcaps">Spending breakdown</span>
+                <Card style={{ background: 'var(--pine-soft)', borderLeft: '3px solid var(--pine)' }}>
+                  <div className="smallcaps" style={{ color: 'var(--pine)', marginBottom: 12 }}>
+                    Your savings plan this month
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-                    <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {plan.discretionary !== undefined ? 'Discretionary' : 'Spending'}
+
+                  {/* Per-goal rows */}
+                  {plan.userGoals
+                    .filter((g) => g.targetAmt > 0 && g.targetDate)
+                    .map((g, i) => {
+                      const [y, m] = g.targetDate.split('-').map(Number);
+                      const targetMs = new Date(y, m - 1, 1).getTime() - new Date().getTime();
+                      const monthsLeft = Math.max(1, Math.round(targetMs / (1000 * 60 * 60 * 24 * 30.44)));
+                      const monthly = Math.round(g.targetAmt / monthsLeft);
+                      const targetDateStr = new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                            padding: '8px 0', borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 500 }}>
+                              Goal: {g.name}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                              towards AED {g.targetAmt.toLocaleString()} by {targetDateStr}
+                            </div>
+                          </div>
+                          <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--pine)', flexShrink: 0, marginLeft: 12 }}>
+                            AED {monthly.toLocaleString()}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {/* Per-big-payment rows */}
+                  {plan.bigPayments.map((bp, i) => {
+                    const monthly = Math.round(bp.amt / 6);
+                    const isFirst = plan.userGoals.filter((g) => g.targetAmt > 0 && g.targetDate).length === 0 && i === 0;
+                    return (
+                      <div
+                        key={bp.id}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                          padding: '8px 0', borderTop: isFirst ? 'none' : '1px solid var(--hairline)',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 500 }}>
+                            Big payment: {bp.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                            due {bp.m}
+                          </div>
+                        </div>
+                        <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--pine)', flexShrink: 0, marginLeft: 12 }}>
+                          AED {monthly.toLocaleString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Divider + true spending budget */}
+                  <div style={{ borderTop: '2px solid var(--pine)', marginTop: 4, paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      True spending budget
                     </span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
-                      AED {(plan.discretionary !== undefined ? plan.discretionary : plan.allocation.spending).toLocaleString()}
+                    <span className="serif tnum" style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+                      AED {(plan.discretionary ?? plan.allocation.spending).toLocaleString()}
                     </span>
                   </div>
-                  {plan.monthlyGoalContrib > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--hairline)' }}>
-                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Goal savings</span>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>AED {plan.monthlyGoalContrib.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {plan.monthlyBigPaymentReserve > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--hairline)' }}>
-                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Big payments fund</span>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>AED {plan.monthlyBigPaymentReserve.toLocaleString()}</span>
-                    </div>
-                  )}
                 </Card>
               </div>
             )}
