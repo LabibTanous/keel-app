@@ -110,7 +110,7 @@ function FlatTaxCard({ turnover, rate, locationLabel }: { turnover: number; rate
         <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>
           {approxAED(annual)} a year ({approxAED(monthly)}/month), at {rate}% of your tracked income.
         </div>
-        <Disclaimer style={{ marginTop: 9 }}>Based on the rate you set — an estimate, not tax advice.</Disclaimer>
+        <Disclaimer style={{ marginTop: 9 }}>Based on the rate you set, on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice.</Disclaimer>
       </div>
     </Card>
   );

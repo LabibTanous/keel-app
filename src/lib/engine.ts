@@ -382,6 +382,9 @@ export function computeOutlook(
   fractionElapsed: number,
 ): Outlook {
   if (likelyMonth <= 0) return 'on track';
+  // Don't judge early in the month. Freelancers are paid mid/late month, so a quiet
+  // first quarter is normal — crying "running lean" on day 3 is a false alarm.
+  if (fractionElapsed < 0.25) return 'on track'; // scenario E1
   const expectedByNow = likelyMonth * Math.min(1, Math.max(0, fractionElapsed));
   if (expectedByNow <= 0) return 'on track';
   const ratio = trackedThisMonth / expectedByNow;
@@ -589,7 +592,9 @@ export function interpret(
   } else if (mode === 'flat') {
     const annual = estimateAnnualTax(taxTurnover, { taxMode, taxFlatRate });
     if (annual > 0) {
-      taxMeaning = `Estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr tax at the ${taxFlatRate ?? 0}% rate you set — an estimate, not tax advice.`;
+      // Flat estimate is on GROSS income — flag that actual tax is likely lower after
+      // deductible business expenses (scenario F5).
+      taxMeaning = `Estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr at the ${taxFlatRate ?? 0}% rate you set, on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice.`;
     }
   }
   // mode 'none' → no tax surfaced (honest default).

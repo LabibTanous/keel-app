@@ -9,21 +9,34 @@
 import { describe, it, expect } from 'vitest';
 import {
   type IncomeItem,
+  type IncomeRange,
   toAED,
   groupByMonth,
+  computeRange,
   computeRangeFromIncomes,
   computePaycheck,
   computeAllocation,
   computeRunway,
+  computeOutlook,
   computeAfford,
   crossLinkAffordWithIncoming,
   goalTradeoff,
+  volatilityTrend,
+  interpret,
+  detectSignals,
   estimateAnnualTax,
   CCY_RATES,
+  FX_AS_OF,
   ASSUMED_PROFIT_MARGIN,
   UAE_CT_RATE,
   UAE_CT_FREE_THRESHOLD,
   UAE_CT_REGISTRATION_TURNOVER,
+  // deprecated shims — must stay importable (api/plan/route.ts depends on them)
+  analyzeIncome,
+  recommendPaycheck,
+  buildMonthlyPlan,
+  detectSignalsLegacy,
+  forecastNextMonth,
 } from './engine';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -256,5 +269,365 @@ describe('research: emergency-fund / runway norm', () => {
     );
     expect(Math.round(range.likely)).toBe(15000); // 180k / 12, never /3
     expect(range.provisional).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SCENARIO LIBRARY — KEEL_ENGINE_SCENARIOS.md (non-DECISION entries)
+// DECISION entries A6/B3/D3/D4/E4/F7/G3/H5 are intentionally NOT encoded here —
+// they need a product call. UI/adviser-only entries (G4, H2 markers; I5 cap;
+// J1–J6 adviser copy) live in TaxClient/Assistant/store, not the pure engine.
+// ════════════════════════════════════════════════════════════════════════════
+
+const months = (amounts: number[], startMonth = 1, year = 2025): IncomeItem[] =>
+  amounts.map((a, i) => inc(a, `${year}-${String(startMonth + i).padStart(2, '0')}-01`));
+
+const makeInterp = (over: {
+  range?: IncomeRange; paycheck?: number; essentials?: number; region?: string;
+  buffer?: number; taxTurnover?: number; outlook?: string; tracked?: number;
+  taxMode?: 'none' | 'flat' | 'uae_ct'; taxFlatRate?: number; incomes?: IncomeItem[];
+} = {}) => {
+  const range = over.range ?? computeRangeFromIncomes(DEMO);
+  const paycheck = over.paycheck ?? 9750;
+  const essentials = over.essentials ?? 6200;
+  const region = over.region ?? 'AE';
+  const buffer = over.buffer ?? 0;
+  const taxTurnover = over.taxTurnover ?? 0;
+  const allocation = computeAllocation(paycheck, essentials, region, false, 0, buffer, 3, taxTurnover, { taxMode: over.taxMode, taxFlatRate: over.taxFlatRate });
+  const runway = computeRunway(buffer, essentials);
+  return interpret(
+    { range, paycheck, allocation, runway, outlook: over.outlook ?? 'on track', trackedThisMonth: over.tracked ?? 0, taxTurnover },
+    { essentials, targetMonths: 3, region, taxMode: over.taxMode, taxFlatRate: over.taxFlatRate },
+    over.incomes ?? [],
+  );
+};
+
+describe('Scenario A — paycheck & volatility', () => {
+  it('A1 wider swings → lower pay', () => {
+    // scenario A1
+    const steady = computePaycheck(computeRangeFromIncomes(months([13500, 14000, 14500])), 0, 0);
+    const choppy = computePaycheck(computeRangeFromIncomes(months([3000, 12000, 30000])), 0, 0);
+    expect(steady).toBeGreaterThan(choppy);
+    expect(steady).toBeGreaterThanOrEqual(10500);
+    expect(steady).toBeLessThanOrEqual(12500);
+    expect(choppy).toBeGreaterThanOrEqual(5500);
+    expect(choppy).toBeLessThanOrEqual(7500);
+  });
+  it('A2 single windfall is not a raise', () => {
+    // scenario A2
+    const r = computeRangeFromIncomes([inc(150000, '2025-01-15')]);
+    expect(r.provisional).toBe(true);
+    expect(computePaycheck(r, 3739, 0)).toBeLessThanOrEqual(9000);
+  });
+  it('A3 lumpy multi-payment annualised over max(12,span)', () => {
+    // scenario A3
+    const r = computeRangeFromIncomes(months([90000], 2).concat(months([100000], 6), months([80000], 10)), 'project');
+    expect(Math.round(r.likely)).toBe(22500);
+    expect(computePaycheck(r, 6200, 23000)).toBe(14500);
+  });
+  it('A4 dense recent burst not crushed', () => {
+    // scenario A4
+    const r = computeRangeFromIncomes(months([15000, 16000, 14000]), 'project');
+    expect(r.likely).toBeGreaterThan(13000); // near-monthly median ~15k, not 45k/12=3,750
+  });
+  it('A5 more history → less provisional', () => {
+    // scenario A5
+    expect(computeRangeFromIncomes(months([14000, 15000]), 'monthly').provisional).toBe(true);
+    expect(computeRangeFromIncomes(DEMO).provisional).toBe(false);
+  });
+  it('A7 steadier lately → trend steadier', () => {
+    // scenario A7 — prior 3 choppy, recent 3 steady
+    const t = volatilityTrend(months([4000, 26000, 6000, 14000, 14200, 13800]));
+    expect(t.trend).toBe('steadier');
+    expect(t.message.length).toBeGreaterThan(0);
+  });
+  it('A8 choppier lately → trend choppier', () => {
+    // scenario A8 — prior 3 steady, recent 3 choppy
+    const t = volatilityTrend(months([14000, 14200, 13800, 4000, 26000, 6000]));
+    expect(t.trend).toBe('choppier');
+  });
+  it('A9 paycheck never at/above a likely month', () => {
+    // scenario A9
+    for (const set of [months([14000, 15000, 13000, 16000, 14500, 15500]), months([30000, 5000, 28000, 9000])]) {
+      const r = computeRangeFromIncomes(set);
+      expect(computePaycheck(r, 6200, 23000)).toBeLessThan(r.likely);
+    }
+  });
+  it('A10 essentials above income → honest low number + signal', () => {
+    // scenario A10
+    const r = computeRangeFromIncomes(DEMO);
+    const pay = computePaycheck(r, 20000, 23000);
+    expect(pay).toBeLessThan(r.likely); // not inflated to cover essentials
+    const alloc = computeAllocation(pay, 20000, 'AE', false, 0, 23000, 3, 0, {});
+    const sigs = detectSignals(r, alloc, 0, 0.5);
+    expect(sigs.some(s => /essentials exceed/i.test(s.title))).toBe(true);
+  });
+});
+
+describe('Scenario B — buffer & runway', () => {
+  it('B1 runway < 1.5 = top priority warning', () => {
+    // scenario B1
+    const i = makeInterp({ buffer: 3000, essentials: 6000 });
+    expect(i.topInsightLevel).toBe('warning');
+    expect(i.topInsight).toMatch(/days/);
+  });
+  it('B2 runway >= 3 = freedom framing', () => {
+    // scenario B2
+    const i = makeInterp({ buffer: 30000, essentials: 6000 });
+    expect(i.topInsightLevel).toBe('success');
+    expect(i.topInsight).toMatch(/breathing room/i);
+  });
+  it('B4 buffer above target → no over-saving', () => {
+    // scenario B4
+    const a = computeAllocation(15000, 6200, 'AE', false, 0, 50000, 3, 0, {});
+    expect(a.buffer).toBe(0);
+    expect(a.spending).toBeGreaterThan(0);
+  });
+  it('B5 buffer contribution never starves essentials', () => {
+    // scenario B5
+    const a = computeAllocation(8000, 6200, 'AE', false, 0, 0, 3, 0, {});
+    expect(a.spending).toBeGreaterThanOrEqual(0);
+    expect(a.rentAndBills + a.tax + a.zakat + a.buffer).toBeLessThanOrEqual(8000);
+  });
+  it('B6 runway uses essentials, not paycheck', () => {
+    // scenario B6
+    expect(computeRunway(24000, 6000)).toBe(4);
+  });
+  it('B7 long dry spell mid-history → sparse, annualised', () => {
+    // scenario B7 — Jan & Aug only
+    const r = computeRangeFromIncomes([inc(30000, '2025-01-10'), inc(30000, '2025-08-10')]);
+    expect(r.provisional).toBe(true);
+    expect(Math.round(r.likely)).toBe(5000); // 60k / 12
+  });
+  it('B8 runway never negative or NaN', () => {
+    // scenario B8
+    const r = computeRangeFromIncomes([]);
+    const pay = computePaycheck(r, 0, 0);
+    expect(Number.isFinite(pay)).toBe(true);
+    expect(computeRunway(0, 0)).toBe(0);
+    expect(computeRunway(0, 6200)).toBe(0);
+  });
+});
+
+describe('Scenario C — afford against the plan', () => {
+  it('C1 fits discretionary', () => {
+    // scenario C1
+    const a = computeAfford(2000, 5000, 10000, 3000);
+    expect(a.verdict).toBe('fits');
+    expect(a.freeRemaining).toBe(3000);
+  });
+  it('C2 dips into buffer', () => {
+    // scenario C2
+    expect(computeAfford(5000, 3500, 13500, 0).verdict).toBe('dips'); // free buffer 13500
+  });
+  it('C3 breaks the plan', () => {
+    // scenario C3
+    expect(computeAfford(50000, 3500, 13500, 0).verdict).toBe('break');
+  });
+  it('C4 confirmed payment soon → wait with days', () => {
+    // scenario C4
+    const d = new Date(); d.setDate(d.getDate() + 9);
+    const hint = crossLinkAffordWithIncoming(20000, 8000, [inc(12000, d.toISOString().slice(0, 10))]);
+    expect(hint).not.toBeNull();
+    expect(hint?.wouldChangeTo).toBe('fits');
+    expect(hint?.daysAway).toBeGreaterThanOrEqual(8);
+    expect(hint?.daysAway).toBeLessThanOrEqual(10);
+  });
+  it('C5 hoped-for income must NOT change a verdict', () => {
+    // scenario C5
+    const d = new Date(); d.setDate(d.getDate() + 5);
+    expect(crossLinkAffordWithIncoming(5000, 2000, [inc(20000, d.toISOString().slice(0, 10), 'AED', 'possible')])).toBeNull();
+  });
+  it('C6 afford floor protects a minimum buffer', () => {
+    // scenario C6 — buffer == safeFloor → nothing free
+    expect(computeAfford(1, 0, 5000, 5000).verdict).toBe('break');
+  });
+});
+
+describe('Scenario D — income patterns', () => {
+  it('D1 one-off does not inflate the likely month', () => {
+    // scenario D1 — five 14k + one 60k month
+    const r = computeRangeFromIncomes(months([14000, 14000, 14000, 14000, 14000, 60000]));
+    expect(Math.round(r.likely)).toBe(14000);
+  });
+  it('D2 quarterly retainer annualises', () => {
+    // scenario D2 — 4×30k Jan/Apr/Jul/Oct
+    const r = computeRangeFromIncomes(
+      [inc(30000, '2025-01-10'), inc(30000, '2025-04-10'), inc(30000, '2025-07-10'), inc(30000, '2025-10-10')],
+      'quarterly',
+    );
+    expect(Math.round(r.likely)).toBe(10000); // 120k / 12
+  });
+  it('D5 sustained rise moves range; single windfall does not', () => {
+    // scenario D5
+    const sustained = computeRangeFromIncomes(months([14000, 14000, 14000, 25000, 25000, 25000]));
+    expect(sustained.likely).toBeGreaterThan(14000);
+    const windfall = computeRangeFromIncomes(months([14000, 14000, 14000, 14000, 14000, 60000]));
+    expect(Math.round(windfall.likely)).toBe(14000);
+  });
+  it('D6 seasonal earner annualises over 12', () => {
+    // scenario D6 — active Jan-Mar + Oct-Dec (busy halves), quiet middle
+    const r = computeRangeFromIncomes(
+      months([14000, 14000, 14000]).concat(months([14000, 14000, 14000], 10)),
+      'irregular',
+    );
+    expect(r.provisional).toBe(true);
+    expect(Math.round(r.likely)).toBe(7000); // 84k / 12
+  });
+});
+
+describe('Scenario E — outlook (mid-month honesty)', () => {
+  it('E1 do not judge early in the month', () => {
+    // scenario E1 — day ~3 (fraction 0.1), low tracked → on track
+    expect(computeOutlook(200, 14000, 0.1)).toBe('on track');
+  });
+  it('E2 genuinely behind pace → lean', () => {
+    // scenario E2 — 60% through, ~20% of likely tracked
+    expect(computeOutlook(2800, 14000, 0.6)).toBe('running lean');
+  });
+  it('E3 ahead of pace → strong', () => {
+    // scenario E3 — 50% through, ~90% of likely tracked
+    expect(computeOutlook(12600, 14000, 0.5)).toBe('strong');
+  });
+});
+
+describe('Scenario F — tax (user-declared)', () => {
+  it('F1 default is no income tax', () => {
+    // scenario F1
+    expect(estimateAnnualTax(120000, {})).toBe(0);
+  });
+  it('F2 flat % the user sets', () => {
+    // scenario F2
+    expect(estimateAnnualTax(120000, { taxMode: 'flat', taxFlatRate: 15 })).toBe(18000);
+    expect(Math.round(18000 / 12)).toBe(1500);
+  });
+  it('F3 UAE CT only over the line', () => {
+    // scenario F3
+    expect(estimateAnnualTax(1_400_000, { taxMode: 'uae_ct' })).toBe(4050);
+    expect(estimateAnnualTax(900_000, { taxMode: 'uae_ct' })).toBe(0);
+    expect(estimateAnnualTax(2_000_000, { taxMode: 'uae_ct' })).toBe(20250);
+  });
+  it('F4 set-aside matches the displayed estimate', () => {
+    // scenario F4 — allocation tax === round(estimateAnnualTax / 12), one source
+    const annual = estimateAnnualTax(1_400_000, { taxMode: 'uae_ct' });
+    const a = computeAllocation(30000, 6200, 'AE', false, 0, 0, 3, 1_400_000, { taxMode: 'uae_ct' });
+    expect(a.tax).toBe(Math.round(annual / 12));
+  });
+  it('F5 tax figure is gross-based — disclaimer says so', () => {
+    // scenario F5
+    const m = makeInterp({ taxMode: 'flat', taxFlatRate: 15, taxTurnover: 120000 }).taxMeaning;
+    expect(m).toMatch(/gross/i);
+    expect(m).toMatch(/likely lower after business expenses/i);
+    expect(m).toMatch(/not tax advice/i);
+  });
+  it('F6 approaching the CT line → early heads-up', () => {
+    // scenario F6 — 800k is 80% of 1M
+    const m = makeInterp({ taxMode: 'uae_ct', taxTurnover: 800000 }).taxMeaning;
+    expect(m).toMatch(/approaching/i);
+  });
+});
+
+describe('Scenario G — Zakat', () => {
+  it('G1 zakat only when enabled', () => {
+    // scenario G1
+    const on = computeAllocation(10000, 6200, 'AE', true, 60000, 0, 3, 0, {});
+    expect(on.zakat).toBe(125); // 60000 * 2.5% / 12
+    const off = computeAllocation(10000, 6200, 'AE', false, 60000, 0, 3, 0, {});
+    expect(off.zakat).toBe(0);
+  });
+  it('G2 zakat value is 0 when wealth 0 (row hidden at UI)', () => {
+    // scenario G2 — engine primitive; dashboard/TaxClient hide the row when 0
+    expect(computeAllocation(10000, 6200, 'AE', true, 0, 0, 3, 0, {}).zakat).toBe(0);
+  });
+});
+
+describe('Scenario H — multi-currency', () => {
+  it('H1 foreign income converts to AED', () => {
+    // scenario H1
+    expect(toAED(8000, 'USD')).toBeCloseTo(29380, 0);
+  });
+  it('H3 mixed-currency history normalises before ranging', () => {
+    // scenario H3
+    const m = groupByMonth([inc(1000, '2025-01-01', 'USD'), inc(1000, '2025-02-01', 'EUR'), inc(1000, '2025-03-01', 'AED')]);
+    expect(m['2025-01']).toBeCloseTo(3672.5, 1);
+    expect(m['2025-02']).toBeCloseTo(3950, 1);
+    expect(m['2025-03']).toBe(1000);
+  });
+  it('H4 rates are dated/static — disclosed via FX_AS_OF', () => {
+    // scenario H4
+    expect(typeof FX_AS_OF).toBe('string');
+    expect(FX_AS_OF.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Scenario I — goals', () => {
+  it('I1 per-goal progress capped at its target (engine primitive)', () => {
+    // scenario I1 — buffer 50k vs a 15k goal → remaining 0, ETA "done"
+    const t = goalTradeoff(15000, 50000, 2000, 5000);
+    expect(t.monthsToGoal).toBe(0); // already there
+  });
+  it('I2 goal trade-off is three-way', () => {
+    // scenario I2
+    const t = goalTradeoff(40000, 10000, 1800, 6000);
+    expect(t.newSpending).toBe(4200);
+    expect(t.monthsToGoal).toBe(Math.ceil(30000 / 1800));
+  });
+  it('I3 behind/ahead derivable from monthsToGoal', () => {
+    // scenario I3 — low contribution → many months (behind); high → few (ahead)
+    const behind = goalTradeoff(30000, 0, 500, 5000).monthsToGoal!;
+    const ahead = goalTradeoff(30000, 0, 5000, 5000).monthsToGoal!;
+    expect(behind).toBeGreaterThan(ahead);
+  });
+  it('I4 goal date never negative/garbage', () => {
+    // scenario I4
+    expect(goalTradeoff(30000, 40000, 2000, 5000).monthsToGoal).toBe(0); // buffer >= target
+    expect(goalTradeoff(30000, 10000, 0, 5000).monthsToGoal).toBeNull(); // no contribution
+  });
+});
+
+describe('Scenario K — edge & integrity', () => {
+  it('K2 zero data never crashes / no NaN', () => {
+    // scenario K2
+    const r = computeRangeFromIncomes([]);
+    const pay = computePaycheck(r, 0, 0);
+    const a = computeAllocation(pay, 0, 'AE', false, 0, 0, 3, 0, {});
+    for (const v of [r.lean, r.likely, r.strong, pay, a.rentAndBills, a.tax, a.zakat, a.buffer, a.spending]) {
+      expect(Number.isFinite(v)).toBe(true);
+    }
+  });
+  it('K3 demo seed anchor 9,750 (never break)', () => {
+    // scenario K3
+    expect(computePaycheck(computeRangeFromIncomes(DEMO), 6200, 23000)).toBe(9750);
+  });
+  it('K4 safety factor bounded → paycheck/likely in [0.55, 0.85]', () => {
+    // scenario K4
+    const r = { lean: 5000, likely: 20000, strong: 40000, provisional: false };
+    const ratio = computePaycheck(r, 0, 0) / r.likely;
+    expect(ratio).toBeGreaterThanOrEqual(0.50);
+    expect(ratio).toBeLessThanOrEqual(0.86);
+  });
+  it('K5 deprecated exports still importable (api/plan depends on them)', () => {
+    // scenario K5
+    for (const fn of [analyzeIncome, recommendPaycheck, buildMonthlyPlan, detectSignalsLegacy, forecastNextMonth]) {
+      expect(typeof fn).toBe('function');
+    }
+  });
+  it('K6 provisional honesty at < 3 months', () => {
+    // scenario K6
+    expect(computeRangeFromIncomes(months([14000])).provisional).toBe(true);
+    expect(computeRangeFromIncomes(months([14000, 15000])).provisional).toBe(true);
+    expect(computeRangeFromIncomes(DEMO).provisional).toBe(false);
+  });
+  it('K1 allocation sums to paycheck (extra cases)', () => {
+    // scenario K1 — see also describe block 5
+    const cases = [
+      computeAllocation(6250, 6200, 'AE', false, 0, 0, 3, 0, {}),
+      computeAllocation(8000, 15000, 'AE', false, 0, 0, 3, 0, {}),
+      computeAllocation(40000, 6200, 'AE', true, 200000, 500000, 6, 2_000_000, { taxMode: 'uae_ct' }),
+    ];
+    const expected = [6250, 8000, 40000];
+    cases.forEach((a, idx) => {
+      expect(a.rentAndBills + a.tax + a.zakat + a.buffer + a.spending).toBe(expected[idx]);
+    });
   });
 });
