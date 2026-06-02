@@ -28,6 +28,9 @@ function parseCSV(text: string): ParsedTransaction[] {
   );
   const creditIdx = headers.findIndex(h => h === 'credit' || h === 'cr' || h.includes('credit amount'));
   const debitIdx = headers.findIndex(h => h === 'debit' || h === 'dr' || h.includes('debit amount'));
+  const ccyIdx = headers.findIndex(h => h === 'currency' || h === 'ccy' || h === 'curr' || h.includes('currency'));
+
+  const KNOWN_CCY = ['AED', 'USD', 'EUR', 'GBP', 'SAR'];
 
   const transactions: ParsedTransaction[] = [];
 
@@ -61,9 +64,16 @@ function parseCSV(text: string): ParsedTransaction[] {
 
     if (Math.abs(amount) < 0.01) continue;
 
+    // Read the currency column when present; default to AED (home currency) when absent.
+    let currency = 'AED';
+    if (ccyIdx >= 0 && cols[ccyIdx]) {
+      const raw = cols[ccyIdx].toUpperCase().replace(/[^A-Z]/g, '');
+      if (KNOWN_CCY.includes(raw)) currency = raw;
+    }
+
     const type: ParsedTransaction['type'] = amount > 0 ? 'income' : 'expense';
 
-    transactions.push({ date, description: desc, amount, currency: 'AED', type });
+    transactions.push({ date, description: desc, amount, currency, type });
   }
 
   return transactions;

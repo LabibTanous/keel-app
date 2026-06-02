@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
-import { TAX_REGIONS, statusOf } from '@/lib/engine';
+import { TAX_REGIONS, statusOf, estimateCorporateTax, ASSUMED_PROFIT_MARGIN } from '@/lib/engine';
 import { Card, Disclaimer } from '@/components/keel/ui';
 import { IconCalendar } from '@/components/keel/icons';
 import { Dock } from '@/components/keel/Dock';
@@ -28,14 +28,10 @@ const REGION_FLAG: Record<string, string> = {
 
 // ── Threshold rules (derived from TAX_REGIONS in engine.ts) ──────────────────
 
-// UAE Corporate Tax (2023+ regime): 0% on taxable income up to AED 375,000,
-// 9% above it. CT is levied on PROFIT, but Keel only tracks turnover — so we
-// apply a rough, conservative profit-margin proxy to turnover to estimate it.
-// 30% is a more defensible default for a freelancer / small company than a
-// higher figure. This is a rough estimate only, never audited profit.
-const ASSUMED_PROFIT_MARGIN = 0.30;
-const CT_FREE_THRESHOLD = 375_000;
-const CT_RATE = 0.09;
+// Corporate Tax math lives in engine.ts (estimateCorporateTax) so the displayed
+// estimate and the money actually set aside in computeAllocation come from ONE
+// formula. ASSUMED_PROFIT_MARGIN (0.30) is imported from there for the copy below.
+const MARGIN_PCT = Math.round(ASSUMED_PROFIT_MARGIN * 100);
 
 interface Threshold {
   id: string;
@@ -66,9 +62,8 @@ const THRESHOLD_RULES: Record<string, Threshold[]> = {
       nearMsg: "Approaching the AED 1M line where Corporate Tax starts to apply.",
       overMsg: "Now applies — register, then file 9% on profit above AED 375k.",
       estimate: (t, ccy) => {
-        const estimatedProfit = t * ASSUMED_PROFIT_MARGIN;
-        const ct = Math.max(0, estimatedProfit - CT_FREE_THRESHOLD) * CT_RATE;
-        return `≈ ${cur(ct, ccy)} a year, very roughly, on profit above AED 375k (assuming ~30% margin).`;
+        const ct = estimateCorporateTax(t, 'AE');
+        return `≈ ${cur(ct, ccy)} a year, very roughly, on profit above AED 375k (assuming ~${MARGIN_PCT}% margin).`;
       },
     },
   ],
@@ -134,13 +129,21 @@ interface TaxItemProps {
   item: Threshold;
   turnover: number;
   ccy: string;
+  registered?: boolean; // user self-reported they are registered for this line (VAT)
 }
 
-function TaxItem({ item, turnover, ccy }: TaxItemProps) {
-  const st = statusOf(item.limit, turnover);
-  const s = STATUS_STYLE[st];
+const REGISTERED_STYLE = { label: 'Registered', color: 'var(--pine)' };
+
+function TaxItem({ item, turnover, ccy, registered }: TaxItemProps) {
+  const rawStatus = statusOf(item.limit, turnover);
+  // A user who says they're registered is treated as over the line regardless of
+  // tracked turnover — they have an active obligation either way.
+  const st = registered ? 'over' : rawStatus;
+  const s = registered ? REGISTERED_STYLE : STATUS_STYLE[st];
   const pct = Math.min(100, Math.round((turnover / item.limit) * 100));
-  const msg = st === 'over' ? item.overMsg : st === 'near' ? item.nearMsg : item.clearMsg;
+  const msg = registered
+    ? "You're registered — file your VAT returns each period and keep collecting it on invoices."
+    : st === 'over' ? item.overMsg : st === 'near' ? item.nearMsg : item.clearMsg;
   return (
     <Card style={{ opacity: st === 'clear' ? 0.92 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
@@ -322,7 +325,7 @@ export function TaxClient() {
 
             {items.map((item, i) => (
               <div key={item.id} className="rise" style={{ animationDelay: `${110 + i * 60}ms` }}>
-                <TaxItem item={item} turnover={turnover} ccy={ccy} />
+                <TaxItem item={item} turnover={turnover} ccy={ccy} registered={item.id === 'vat' && !!profile.vatRegistered} />
               </div>
             ))}
 

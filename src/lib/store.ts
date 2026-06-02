@@ -10,8 +10,7 @@ import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import type { IncomeItem, Profile, IncomeRange, Allocation, Signal, GoalTradeoff, IncomingPaymentHint, Interpretations } from './engine';
 import {
   toAED,
-  groupByMonth,
-  computeRange,
+  computeRangeFromIncomes,
   computePaycheck,
   computeAllocation,
   computeRunway,
@@ -87,8 +86,9 @@ export interface PlanStore {
 // ── Pure plan derivation ──────────────────────────────────────────────────────
 
 export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: BigPayment[] = [], userGoals: UserGoal[] = [], expenses: ExpenseItem[] = []): Plan {
-  const monthlyTotals = groupByMonth(profile.incomes);
-  const range = computeRange(monthlyTotals);
+  // Lumpy/project earners get an annualised range (FIX N3) — see computeRangeFromIncomes.
+  // Monthly earners delegate to the unchanged computeRange path.
+  const range = computeRangeFromIncomes(profile.incomes, profile.incomePattern);
 
   // Auto-derive tracked-this-month from current-month income items already in the profile.
   // trackedOverride (from manual "mark received" actions) adds on top.
@@ -120,6 +120,11 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   // - 'sole_trader' | 'company' | undefined: all income is freelance/business — count all.
   if (profile.employmentType === 'employed') {
     taxTurnover = 0;
+  } else if (profile.annualRevenue && profile.annualRevenue > 0) {
+    // Self-reported annual revenue (from onboarding) counts toward tax-threshold
+    // status — a high earner whose YTD logged income is still ramping should still
+    // see the right VAT/CT status. The higher of the two wins (FIX N1).
+    taxTurnover = Math.max(taxTurnover, profile.annualRevenue);
   }
 
   const allocation = computeAllocation(

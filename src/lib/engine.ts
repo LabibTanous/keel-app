@@ -107,6 +107,22 @@ export const TAX_REGIONS: Record<string, {
   },
 };
 
+// Corporate Tax estimate — SINGLE SOURCE OF TRUTH, shared by the Tax screen
+// (annual display) and computeAllocation (monthly set-aside). UAE 2023+ regime:
+// 0% on taxable PROFIT up to AED 375,000, then ctRate above it. Keel tracks
+// turnover, not audited profit, so a conservative margin proxy is applied.
+// This is a rough estimate only, never advice.
+export const ASSUMED_PROFIT_MARGIN = 0.30;
+export const CT_FREE_THRESHOLD = 375_000; // AED of profit taxed at 0%
+
+/** Estimated ANNUAL corporate tax in AED, derived from turnover. Rough estimate. */
+export function estimateCorporateTax(turnoverAED: number, region: string): number {
+  const r = TAX_REGIONS[region];
+  if (!r || r.ctRate <= 0) return 0;
+  const profit = turnoverAED * ASSUMED_PROFIT_MARGIN;
+  return Math.max(0, profit - CT_FREE_THRESHOLD) * r.ctRate;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function percentile(sortedAsc: number[], p: number): number {
@@ -121,6 +137,13 @@ function percentile(sortedAsc: number[], p: number): number {
 
 function roundTo250(n: number): number {
   return Math.round(n / 250) * 250;
+}
+
+/** Inclusive count of calendar months between two 'YYYY-MM' keys (>= 1). */
+function monthSpan(firstKey: string, lastKey: string): number {
+  const [fy, fm] = firstKey.split('-').map(Number);
+  const [ly, lm] = lastKey.split('-').map(Number);
+  return Math.max(1, (ly * 12 + lm) - (fy * 12 + fm) + 1);
 }
 
 // ── Core computations ────────────────────────────────────────────────────────
@@ -172,6 +195,56 @@ export function computeRange(monthlyTotals: Record<string, number>): IncomeRange
     strong: percentile(values, 0.8),
     provisional: false,
   };
+}
+
+/**
+ * Income range that is HONEST about lumpy / project-based earners.
+ *
+ * groupByMonth only contains months that actually had income. For a freelancer
+ * paid 2–3×/year, those lump months would otherwise be treated as "typical
+ * monthly income" — inflating the paycheck 2–3× and (with ≥3 lumps) reading as
+ * confident. This is the exact failure Keel exists to prevent.
+ *
+ * Lumpy detection: explicit incomePattern ('project' | 'irregular' | 'quarterly'),
+ * OR fewer than 60% of the elapsed months between first and last payment had income.
+ *
+ * For lumpy earners we spread TOTAL income across ALL elapsed months (including the
+ * empty ones) — i.e. annualised income ÷ months — and keep provisional=true so the
+ * number never reads as confident. The honest, lower number wins.
+ *
+ * The monthly-earner path is unchanged: it delegates to computeRange() verbatim.
+ */
+export function computeRangeFromIncomes(
+  incomes: IncomeItem[],
+  incomePattern?: string,
+): IncomeRange {
+  const monthly = groupByMonth(incomes);
+  const activeKeys = Object.keys(monthly).sort();
+
+  if (activeKeys.length === 0) {
+    return { lean: 0, likely: 0, strong: 0, provisional: true };
+  }
+
+  const elapsedMonths = monthSpan(activeKeys[0], activeKeys[activeKeys.length - 1]);
+  const activeMonths = activeKeys.length;
+
+  const lumpyPattern = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
+  const sparseActivity = elapsedMonths >= 3 && (activeMonths / elapsedMonths) < 0.6;
+
+  if (lumpyPattern || sparseActivity) {
+    // Spread the full period's income across every elapsed month, empties included.
+    const total = activeKeys.reduce((s, k) => s + monthly[k], 0);
+    const spreadMonthly = total / elapsedMonths;
+    return {
+      lean: spreadMonthly * 0.7,
+      likely: spreadMonthly,
+      strong: spreadMonthly * 1.3,
+      provisional: true, // lumpy income is never confident
+    };
+  }
+
+  // Monthly earner — unchanged behaviour.
+  return computeRange(monthly);
 }
 
 /**
@@ -228,12 +301,13 @@ export function computeAllocation(
 ): Allocation {
   const tax_region = TAX_REGIONS[region];
 
-  // Tax: estimate monthly CT set-aside on annualised paycheck if above threshold
+  // Tax: monthly CT set-aside from the SINGLE shared estimate (same formula the
+  // Tax screen displays), derived from turnover — so the money set aside matches
+  // the number the user sees. CT only sets aside once turnover crosses the CT line.
   let tax = 0;
   if (tax_region) {
-    const annualised = paycheck * 12;
-    if (annualised > tax_region.ctThreshold) {
-      tax = Math.round((annualised - tax_region.ctThreshold) * tax_region.ctRate / 12);
+    if (statusOf(tax_region.ctThreshold, taxTurnover) === 'over') {
+      tax = Math.round(estimateCorporateTax(taxTurnover, region) / 12);
     }
     // VAT reserve: when approaching or over VAT registration line, set aside a monthly
     // buffer (vatRate × paycheck) so the obligation never arrives as a surprise.
