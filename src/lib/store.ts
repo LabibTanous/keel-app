@@ -102,28 +102,25 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     ? profile.paycheckOverride
     : computePaycheck(range, profile.essentials, profile.bufferBalance);
 
-  // YTD tax turnover: sum all incomes in current calendar year.
-  // VAT applies only to freelance/business revenue, not employed salary.
+  // YTD tax turnover: sum all incomes in current calendar year (AED).
+  // Feeds the single estimateAnnualTax() source — UAE Corporate Tax / Egypt+Jordan
+  // progressive income tax. GCC (non-UAE) has no income tax, so this is unused there.
   const thisYear = new Date().getFullYear().toString();
   let taxTurnover = profile.incomes
     .filter(i => i.date.startsWith(thisYear))
     .reduce((sum, i) => sum + toAED(i.amount, i.currency), 0);
 
-  // Adjust turnover by employment type. We don't tag individual income items as
-  // salary vs freelance (IncomeItem has no source field), so we handle this at the
-  // profile level:
-  // - 'employed': pure employee — salary is not VAT-taxable revenue, so turnover is 0.
-  // - 'employed_freelance': MIXED income we can't split without per-item tagging.
-  //   We conservatively count ALL income, which overestimates turnover and warns the
-  //   user early about the VAT threshold — the safe direction to err. (LIMITATION: a
-  //   future fix should tag each IncomeItem with its source to split salary out.)
-  // - 'sole_trader' | 'company' | undefined: all income is freelance/business — count all.
+  // Adjust turnover by employment type. IncomeItem has no source field, so we handle
+  // this at the profile level:
+  // - 'employed': pure employee salary is not freelance/business revenue → turnover 0.
+  // - 'employed_freelance': mixed income we can't split → conservatively count all.
+  // - 'sole_trader' | 'company' | undefined: all income is business → count all.
   if (profile.employmentType === 'employed') {
     taxTurnover = 0;
   } else if (profile.annualRevenue && profile.annualRevenue > 0) {
-    // Self-reported annual revenue (from onboarding) counts toward tax-threshold
-    // status — a high earner whose YTD logged income is still ramping should still
-    // see the right VAT/CT status. The higher of the two wins (FIX N1).
+    // Self-reported annual revenue (from onboarding) counts toward tax status — a
+    // high earner whose YTD logged income is still ramping still sees the right tax.
+    // The higher of the two wins.
     taxTurnover = Math.max(taxTurnover, profile.annualRevenue);
   }
 

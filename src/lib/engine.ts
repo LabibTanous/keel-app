@@ -1,22 +1,29 @@
 /**
  * engine.ts — Keel's pure, deterministic plan engine.
- * NO DB, no network, no side effects. All inputs in; derived values out.
- * Token names and rate map mirror keel-theme.js / ui.jsx (the single sources of truth).
+ * NO DB, no network, no side effects. NO demo/sample data.
+ * Financial constants (FX, tax brackets, thresholds) are real facts, dated where stale-able.
  */
 
 // ── FX ──────────────────────────────────────────────────────────────────────
 
+/** Static FX rates to AED. Stale-able — refresh periodically. */
+export const FX_AS_OF = '2026-01';
 export const CCY_RATES: Record<string, number> = {
   AED: 1,
   USD: 3.6725,
   EUR: 3.95,
   GBP: 4.62,
   SAR: 0.979,
+  EGP: 0.075,   // ≈ AED per EGP (for converting AED turnover → EGP for tax brackets)
+  JOD: 5.18,    // ≈ AED per JOD
 };
 
-/** Convert any supported currency to AED. */
 export function toAED(amount: number, currency: string): number {
   return amount * (CCY_RATES[currency] ?? 1);
+}
+/** Convert an AED amount into another currency (for local tax-bracket math). */
+export function fromAED(amountAED: number, currency: string): number {
+  return amountAED / (CCY_RATES[currency] ?? 1);
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -24,33 +31,31 @@ export function toAED(amount: number, currency: string): number {
 export interface IncomeItem {
   amount: number;
   currency: string;
-  date: string;          // ISO 8601 e.g. "2025-06-01"
+  date: string;          // ISO 8601
   confidence: 'confirmed' | 'likely' | 'possible';
 }
 
 export interface Profile {
-  region: string;          // 'AE' | 'SA' | ...
-  currency: string;        // home currency code
-  essentials: number;      // monthly fixed costs — stored in AED
-  bufferBalance: number;   // current buffer/savings — stored in AED
-  targetMonths: number;    // target buffer depth (default 3)
+  region: string;          // 'AE' | 'SA' | 'QA' | 'KW' | 'EG' | 'JO'
+  currency: string;
+  essentials: number;      // monthly fixed costs, AED
+  bufferBalance: number;   // AED
+  targetMonths: number;
   zakatOn: boolean;
-  zakatableWealth?: number; // current zakatable wealth (gold, cash, etc.) in AED
+  zakatableWealth?: number; // AED
   incomes: IncomeItem[];
-  paycheckOverride?: number; // user has manually set a paycheck amount
-  // ── Onboarding profile attributes ──────────────────────────────────────────
+  paycheckOverride?: number;
   incomePattern?: 'monthly' | 'quarterly' | 'project' | 'irregular';
   employmentType?: 'sole_trader' | 'company' | 'employed_freelance' | 'employed';
-  vatRegistered?: boolean;
   multiCurrency?: boolean;
-  annualRevenue?: number;  // self-reported annual revenue in AED (VAT filing)
+  annualRevenue?: number;  // self-reported annual revenue, AED
   dependants?: number;
 }
 
 export interface IncomeRange {
-  lean: number;    // 20th percentile (or min*0.7 if < 3 months)
-  likely: number;  // median
-  strong: number;  // 80th percentile (or max*1.3 if < 3 months)
+  lean: number;
+  likely: number;
+  strong: number;
   provisional: boolean;
 }
 
@@ -79,48 +84,114 @@ export interface AffordResult {
   freeRemaining: number;
 }
 
-// ── TAX REGIONS ──────────────────────────────────────────────────────────────
+// ── TAX REGIONS (no VAT — personal income tax model) ─────────────────────────
+// GCC: no personal income tax. UAE: Corporate Tax on business profit only.
+// Egypt/Jordan: progressive personal income tax on net professional income.
+
+export type TaxKind = 'none' | 'uae_ct' | 'progressive';
 
 export const TAX_REGIONS: Record<string, {
-  vatThreshold: number;
-  vatRate: number;
-  ctThreshold: number;
-  ctRate: number;
+  kind: TaxKind;
   currency: string;
   label: string;
 }> = {
-  AE: {
-    vatThreshold: 375_000,
-    vatRate: 0.05,
-    ctThreshold: 1_000_000,
-    ctRate: 0.09,
-    currency: 'AED',
-    label: 'UAE',
-  },
-  SA: {
-    vatThreshold: 375_000,
-    vatRate: 0.15,
-    ctThreshold: Infinity,
-    ctRate: 0,
-    currency: 'SAR',
-    label: 'Saudi Arabia',
-  },
+  AE: { kind: 'uae_ct',      currency: 'AED', label: 'UAE' },
+  SA: { kind: 'none',        currency: 'SAR', label: 'Saudi Arabia' },
+  QA: { kind: 'none',        currency: 'QAR', label: 'Qatar' },
+  KW: { kind: 'none',        currency: 'KWD', label: 'Kuwait' },
+  EG: { kind: 'progressive', currency: 'EGP', label: 'Egypt' },
+  JO: { kind: 'progressive', currency: 'JOD', label: 'Jordan' },
 };
 
-// Corporate Tax estimate — SINGLE SOURCE OF TRUTH, shared by the Tax screen
-// (annual display) and computeAllocation (monthly set-aside). UAE 2023+ regime:
-// 0% on taxable PROFIT up to AED 375,000, then ctRate above it. Keel tracks
-// turnover, not audited profit, so a conservative margin proxy is applied.
-// This is a rough estimate only, never advice.
+// UAE Corporate Tax — 9% on profit above AED 375k. Turnover→profit margin proxy.
 export const ASSUMED_PROFIT_MARGIN = 0.30;
-export const CT_FREE_THRESHOLD = 375_000; // AED of profit taxed at 0%
+export const UAE_CT_FREE_THRESHOLD = 375_000; // AED profit at 0%
+export const UAE_CT_RATE = 0.09;
+export const UAE_CT_REGISTRATION_TURNOVER = 1_000_000; // AED turnover → must register
 
-/** Estimated ANNUAL corporate tax in AED, derived from turnover. Rough estimate. */
-export function estimateCorporateTax(turnoverAED: number, region: string): number {
+// Progressive bracket type: marginal rate applied to the slice up to `upTo` (local currency).
+interface Bracket { upTo: number; rate: number; }
+
+// Egypt 2025 personal income tax (EGP), on net income after the personal exemption.
+export const EGYPT_EXEMPTION_EGP = 20_000;
+export const EGYPT_BRACKETS: Bracket[] = [
+  { upTo: 40_000, rate: 0 },
+  { upTo: 55_000, rate: 0.10 },
+  { upTo: 70_000, rate: 0.15 },
+  { upTo: 200_000, rate: 0.20 },
+  { upTo: 400_000, rate: 0.225 },
+  { upTo: 1_200_000, rate: 0.25 },
+  { upTo: Infinity, rate: 0.275 },
+];
+
+// Jordan 2025 personal income tax (JOD), after the personal exemption.
+// +1% national contribution above JOD 200k.
+export const JORDAN_EXEMPTION_JOD = 9_000;
+export const JORDAN_BRACKETS: Bracket[] = [
+  { upTo: 5_000, rate: 0.05 },
+  { upTo: 10_000, rate: 0.10 },
+  { upTo: 15_000, rate: 0.15 },
+  { upTo: 20_000, rate: 0.20 },
+  { upTo: 1_000_000, rate: 0.25 },
+  { upTo: Infinity, rate: 0.30 },
+];
+export const JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD = 200_000;
+export const JORDAN_NATIONAL_CONTRIB_RATE = 0.01;
+
+/** Apply progressive brackets to a taxable amount (in the bracket currency). */
+function applyBrackets(taxable: number, brackets: Bracket[]): number {
+  if (taxable <= 0) return 0;
+  let tax = 0;
+  let lower = 0;
+  for (const b of brackets) {
+    if (taxable <= lower) break;
+    const sliceTop = Math.min(taxable, b.upTo);
+    tax += (sliceTop - lower) * b.rate;
+    lower = b.upTo;
+  }
+  return tax;
+}
+
+/**
+ * Estimated ANNUAL tax in AED, derived from annual turnover (AED).
+ * SINGLE SOURCE OF TRUTH — used by computeAllocation (÷12) and the Tax screen.
+ * Rough estimate only, never advice.
+ */
+export function estimateAnnualTax(turnoverAED: number, region: string): number {
   const r = TAX_REGIONS[region];
-  if (!r || r.ctRate <= 0) return 0;
-  const profit = turnoverAED * ASSUMED_PROFIT_MARGIN;
-  return Math.max(0, profit - CT_FREE_THRESHOLD) * r.ctRate;
+  if (!r || turnoverAED <= 0) return 0;
+
+  if (r.kind === 'none') return 0;
+
+  if (r.kind === 'uae_ct') {
+    const profit = turnoverAED * ASSUMED_PROFIT_MARGIN;
+    return Math.max(0, profit - UAE_CT_FREE_THRESHOLD) * UAE_CT_RATE;
+  }
+
+  // progressive — convert AED turnover to local currency, treat as net professional
+  // income (conservative: no expense deduction modelled), apply exemption + brackets.
+  const local = fromAED(turnoverAED, r.currency);
+  if (region === 'EG') {
+    const taxable = Math.max(0, local - EGYPT_EXEMPTION_EGP);
+    const taxLocal = applyBrackets(taxable, EGYPT_BRACKETS);
+    return toAED(taxLocal, 'EGP');
+  }
+  if (region === 'JO') {
+    const taxable = Math.max(0, local - JORDAN_EXEMPTION_JOD);
+    let taxLocal = applyBrackets(taxable, JORDAN_BRACKETS);
+    if (taxable > JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD) {
+      taxLocal += (taxable - JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD) * JORDAN_NATIONAL_CONTRIB_RATE;
+    }
+    return toAED(taxLocal, 'JOD');
+  }
+  return 0;
+}
+
+/** Does this region require any tax set-aside at all? (false for GCC non-UAE) */
+export function regionHasTax(region: string): boolean {
+  const r = TAX_REGIONS[region];
+  if (!r) return false;
+  return r.kind !== 'none';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,7 +210,6 @@ function roundTo250(n: number): number {
   return Math.round(n / 250) * 250;
 }
 
-/** Inclusive count of calendar months between two 'YYYY-MM' keys (>= 1). */
 function monthSpan(firstKey: string, lastKey: string): number {
   const [fy, fm] = firstKey.split('-').map(Number);
   const [ly, lm] = lastKey.split('-').map(Number);
@@ -148,37 +218,26 @@ function monthSpan(firstKey: string, lastKey: string): number {
 
 // ── Core computations ────────────────────────────────────────────────────────
 
-/**
- * Group income items by YYYY-MM, converting each to AED first.
- * Returns a record of { 'YYYY-MM': totalAED }.
- */
 export function groupByMonth(incomes: IncomeItem[]): Record<string, number> {
   const map: Record<string, number> = {};
   for (const inc of incomes) {
-    const key = inc.date.slice(0, 7); // 'YYYY-MM'
+    const key = inc.date.slice(0, 7);
     const aed = toAED(inc.amount, inc.currency);
     map[key] = (map[key] ?? 0) + aed;
   }
   return map;
 }
 
-/**
- * Compute lean / likely / strong income range from monthly totals.
- * If < 3 months of data, mark provisional and widen the band.
- */
 export function computeRange(monthlyTotals: Record<string, number>): IncomeRange {
   const values = Object.values(monthlyTotals).sort((a, b) => a - b);
   const n = values.length;
 
-  if (n === 0) {
-    return { lean: 0, likely: 0, strong: 0, provisional: true };
-  }
+  if (n === 0) return { lean: 0, likely: 0, strong: 0, provisional: true };
 
   if (n < 3) {
     const minVal = values[0];
     const maxVal = values[n - 1];
     const rawLikely = values[Math.floor(n / 2)];
-    // Single data point: spread over 3-month runway. Two points: 1.5× runway.
     const stretchFactor = n === 1 ? 3 : 1.5;
     const likely = rawLikely / stretchFactor;
     return {
@@ -198,21 +257,13 @@ export function computeRange(monthlyTotals: Record<string, number>): IncomeRange
 }
 
 /**
- * Income range that is HONEST about lumpy / project-based earners.
+ * Income range honest about lumpy / project-based earners.
+ * Lumpy → spread total income across a FULL YEAR (or the observed span if longer),
+ * provisional always. Monthly earners delegate to computeRange unchanged.
  *
- * groupByMonth only contains months that actually had income. For a freelancer
- * paid 2–3×/year, those lump months would otherwise be treated as "typical
- * monthly income" — inflating the paycheck 2–3× and (with ≥3 lumps) reading as
- * confident. This is the exact failure Keel exists to prevent.
- *
- * Lumpy detection: explicit incomePattern ('project' | 'irregular' | 'quarterly'),
- * OR fewer than 60% of the elapsed months between first and last payment had income.
- *
- * For lumpy earners we spread TOTAL income across ALL elapsed months (including the
- * empty ones) — i.e. annualised income ÷ months — and keep provisional=true so the
- * number never reads as confident. The honest, lower number wins.
- *
- * The monthly-earner path is unchanged: it delegates to computeRange() verbatim.
+ * Guard: a recent dense burst (e.g. 3 consecutive active months) is NOT treated as
+ * lumpy even if tagged 'project' — only genuinely sparse activity annualises, so a
+ * freelancer mid-busy-stretch isn't crushed to a near-zero paycheck.
  */
 export function computeRangeFromIncomes(
   incomes: IncomeItem[],
@@ -221,22 +272,20 @@ export function computeRangeFromIncomes(
   const monthly = groupByMonth(incomes);
   const activeKeys = Object.keys(monthly).sort();
 
-  if (activeKeys.length === 0) {
-    return { lean: 0, likely: 0, strong: 0, provisional: true };
-  }
+  if (activeKeys.length === 0) return { lean: 0, likely: 0, strong: 0, provisional: true };
 
   const elapsedMonths = monthSpan(activeKeys[0], activeKeys[activeKeys.length - 1]);
   const activeMonths = activeKeys.length;
+  const density = activeMonths / elapsedMonths;
 
-  const lumpyPattern = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
-  const sparseActivity = elapsedMonths >= 3 && (activeMonths / elapsedMonths) < 0.6;
+  const taggedLumpy = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
+  const sparseActivity = elapsedMonths >= 3 && density < 0.6;
+  // Recent dense burst: every month in the observed span was active (density 1.0)
+  // and there are few months — treat as a normal (if provisional) monthly earner,
+  // not a thinly-spread annual one.
+  const denseRecentBurst = density >= 0.999 && activeMonths <= 3;
 
-  if (lumpyPattern || sparseActivity) {
-    // Spread the full period's income across a FULL YEAR (or the observed span if
-    // that's longer), not just the months between first and last payment. A
-    // freelancer paid Feb–Oct still has Nov/Dec/Jan to cover — annualising over the
-    // payment span alone would overstate the monthly figure. 270k over a 9-month
-    // span → 270k / 12 ≈ 22,500/mo, not 270k / 9 ≈ 30,000/mo.
+  if ((taggedLumpy || sparseActivity) && !denseRecentBurst) {
     const total = activeKeys.reduce((s, k) => s + monthly[k], 0);
     const divisor = Math.max(12, elapsedMonths);
     const spreadMonthly = total / divisor;
@@ -244,42 +293,27 @@ export function computeRangeFromIncomes(
       lean: spreadMonthly * 0.7,
       likely: spreadMonthly,
       strong: spreadMonthly * 1.3,
-      provisional: true, // lumpy income is never confident
+      provisional: true,
     };
   }
 
-  // Monthly earner — unchanged behaviour.
   return computeRange(monthly);
 }
 
-/**
- * Recommend a steady paycheck scaled by income volatility.
- * Wider lean→strong spread = more volatile = more conservative payout.
- * Safety factor: steady (~0.85 of likely) down to choppy (~0.55 of likely).
- */
 export function computePaycheck(
   range: IncomeRange,
   essentials: number,
   bufferBalance: number,
 ): number {
-  if (range.likely <= 0) {
-    return roundTo250(essentials > 0 ? essentials : 250);
-  }
+  if (range.likely <= 0) return roundTo250(essentials > 0 ? essentials : 250);
 
-  // Volatility = how wide the lean→strong band is relative to the likely month.
   const spread = Math.max(0, range.strong - range.lean);
   const volatility = spread / range.likely;
-
-  // Safety factor: steady income pays ~0.85 of likely; very choppy ~0.55.
   const safetyFactor = Math.min(0.85, Math.max(0.55, 0.85 - volatility * 0.35));
 
   let p = roundTo250(range.likely * safetyFactor);
-
-  // Never pay at or above a likely month — buffer contribution must be positive.
   if (p >= range.likely) p = roundTo250(range.likely - 250);
 
-  // Floor at essentials ONLY if essentials fit under a likely month.
-  // If essentials > likely, return the honest lower number; screen surfaces the state.
   if (p < essentials && essentials < range.likely) {
     p = roundTo250(essentials);
     if (p >= range.likely) p = roundTo250(range.likely - 250);
@@ -290,9 +324,9 @@ export function computePaycheck(
 }
 
 /**
- * Compute allocation buckets. Must sum to paycheck.
- * taxTurnover: YTD revenue used to check VAT threshold proximity.
- * When near/over VAT threshold, tax set-aside rises to pre-fund the obligation.
+ * Allocation buckets. Sum to paycheck.
+ * Tax = monthly share of the SINGLE estimateAnnualTax() figure (÷12), gated to
+ * when the obligation actually applies. No VAT. GCC non-UAE → tax 0.
  */
 export function computeAllocation(
   paycheck: number,
@@ -304,40 +338,29 @@ export function computeAllocation(
   targetMonths: number,
   taxTurnover = 0,
 ): Allocation {
-  const tax_region = TAX_REGIONS[region];
-
-  // Tax: monthly CT set-aside from the SINGLE shared estimate (same formula the
-  // Tax screen displays), derived from turnover — so the money set aside matches
-  // the number the user sees. CT only sets aside once turnover crosses the CT line.
   let tax = 0;
-  if (tax_region) {
-    // CT set-aside: monthly share of the SAME annual estimate the Tax screen shows.
-    if (statusOf(tax_region.ctThreshold, taxTurnover) === 'over') {
-      tax = Math.round(estimateCorporateTax(taxTurnover, region) / 12);
-    }
-    // VAT set-aside: monthly share of the SAME annual VAT figure the Tax screen
-    // shows (turnover × vatRate). Gated to 'over' so it matches the screen, which
-    // only surfaces the VAT estimate once the line is crossed. Both screens now
-    // reconcile: dashboard monthly × 12 == Tax screen annual.
-    if (statusOf(tax_region.vatThreshold, taxTurnover) === 'over') {
-      tax += Math.round((taxTurnover * tax_region.vatRate) / 12);
+  const r = TAX_REGIONS[region];
+  if (r && r.kind !== 'none' && taxTurnover > 0) {
+    // UAE CT only sets aside once registration turnover is crossed; progressive
+    // regions set aside whenever the estimate is positive (above exemption).
+    if (r.kind === 'uae_ct') {
+      if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER) {
+        tax = Math.round(estimateAnnualTax(taxTurnover, region) / 12);
+      }
+    } else {
+      tax = Math.round(estimateAnnualTax(taxTurnover, region) / 12);
     }
   }
 
-  // Zakat: monthly share of annual zakat obligation
   const zakat = zakatOn ? Math.round((zakatableWealth * 0.025) / 12) : 0;
 
-  // Buffer contribution: move toward target
   const targetBuffer = essentials * targetMonths;
   const deficit = Math.max(0, targetBuffer - bufferBalance);
-  // Contribute proportionally; don't exceed what's left after essentials+tax+zakat
   const available = paycheck - essentials - tax - zakat;
   const bufferContrib = available > 0 ? Math.round(Math.min(deficit / targetMonths, available)) : 0;
 
-  // Spending = remainder
   const spending = paycheck - essentials - tax - zakat - bufferContrib;
 
-  // Sanity: if spending < 0, reduce buffer contribution
   if (spending < 0) {
     const adjustedBuffer = Math.max(0, bufferContrib + spending);
     return {
@@ -349,25 +372,14 @@ export function computeAllocation(
     };
   }
 
-  return {
-    rentAndBills: essentials,
-    tax,
-    zakat,
-    buffer: bufferContrib,
-    spending,
-  };
+  return { rentAndBills: essentials, tax, zakat, buffer: bufferContrib, spending };
 }
 
-/** Runway in months to 1 decimal. */
 export function computeRunway(bufferBalance: number, essentials: number): number {
   if (essentials <= 0) return 0;
   return Math.round((bufferBalance / essentials) * 10) / 10;
 }
 
-/**
- * Outlook based on tracked-so-far vs the share of a likely month that "should"
- * have arrived by this point. fractionElapsed is 0..1 (day / days-in-month).
- */
 export function computeOutlook(
   trackedThisMonth: number,
   likelyMonth: number,
@@ -375,19 +387,13 @@ export function computeOutlook(
 ): Outlook {
   if (likelyMonth <= 0) return 'on track';
   const expectedByNow = likelyMonth * Math.min(1, Math.max(0, fractionElapsed));
-  if (expectedByNow <= 0) return 'on track'; // very start of month — don't judge yet
+  if (expectedByNow <= 0) return 'on track';
   const ratio = trackedThisMonth / expectedByNow;
   if (ratio < 0.5) return 'running lean';
   if (ratio > 1.3) return 'strong';
   return 'on track';
 }
 
-/**
- * Afford verdict.
- * fits: cost <= spendingLeft
- * dips: cost <= spendingLeft + (bufferBalance - safeFloor)
- * break: otherwise
- */
 export function computeAfford(
   cost: number,
   spendingLeft: number,
@@ -431,9 +437,6 @@ export interface IncomingPaymentHint {
   wouldChangeTo: 'fits' | null;
 }
 
-/**
- * Checks if a confirmed income landing within 14 days would change a dips/break verdict to fits.
- */
 export function crossLinkAffordWithIncoming(
   cost: number,
   spendingLeft: number,
@@ -459,7 +462,6 @@ export function crossLinkAffordWithIncoming(
       return { amount: inc.amount, currency: inc.currency, daysAway, wouldChangeTo: 'fits' };
     }
   }
-
   return null;
 }
 
@@ -470,9 +472,6 @@ export interface GoalTradeoff {
   feasible: boolean;
 }
 
-/**
- * Computes how a monthly goal contribution affects spending and time to goal.
- */
 export function goalTradeoff(
   target: number,
   currentBuffer: number,
@@ -486,18 +485,13 @@ export function goalTradeoff(
   return { requiredMonthly: contribution, newSpending, monthsToGoal, feasible };
 }
 
-/**
- * Computes volatility trend across recent vs prior months.
- */
 export function volatilityTrend(
   incomes: IncomeItem[],
 ): { recentVolatility: number; priorVolatility: number; trend: 'choppier' | 'steadier' | 'stable'; message: string } {
   const monthly = groupByMonth(incomes);
   const keys = Object.keys(monthly).sort();
 
-  if (keys.length < 4) {
-    return { recentVolatility: 0, priorVolatility: 0, trend: 'stable', message: '' };
-  }
+  if (keys.length < 4) return { recentVolatility: 0, priorVolatility: 0, trend: 'stable', message: '' };
 
   function cv(values: number[]): number {
     if (values.length < 2) return 0;
@@ -509,14 +503,12 @@ export function volatilityTrend(
 
   const recentValues = keys.slice(-3).map(k => monthly[k]);
   const priorValues = keys.slice(-6, -3).map(k => monthly[k]);
-
   const recentCV = cv(recentValues);
   const priorCV = cv(priorValues);
   const delta = recentCV - priorCV;
 
   let trend: 'choppier' | 'steadier' | 'stable';
   let message: string;
-
   if (delta > 0.1) {
     trend = 'choppier';
     message = "Your income has been swingier lately — that's why your safe pay is more cautious now.";
@@ -527,7 +519,6 @@ export function volatilityTrend(
     trend = 'stable';
     message = '';
   }
-
   return { recentVolatility: recentCV, priorVolatility: priorCV, trend, message };
 }
 
@@ -561,15 +552,13 @@ export function interpret(
   },
   incomes: IncomeItem[],
 ): Interpretations {
-  const { range, paycheck, allocation, runway, outlook, taxTurnover } = planData;
+  const { range, allocation, runway, outlook, taxTurnover } = planData;
   const { essentials, region } = profileData;
 
-  // paycheckWhy
   const paycheckWhy = range.provisional
     ? 'An early estimate — log more months of income and this sharpens.'
     : `Set below your likely month (AED ${Math.round(range.likely).toLocaleString('en-US')}) so fat months refill the buffer that carries the lean ones.`;
 
-  // runwayMeaning
   let runwayMeaning: string;
   if (runway < 1.5) {
     const days = Math.round(runway * 30);
@@ -581,7 +570,6 @@ export function interpret(
     runwayMeaning = `About ${months} months of essentials covered — a decent buffer, with room to grow.`;
   }
 
-  // outlookMeaning
   let outlookMeaning: string;
   if (outlook === 'running lean') {
     outlookMeaning = "Income is light so far — but your buffer keeps the plan whole. Nothing needs to change yet.";
@@ -591,19 +579,27 @@ export function interpret(
     outlookMeaning = "On track so far. Keep an eye on what's coming in.";
   }
 
-  // taxMeaning
+  // taxMeaning — region-aware, no VAT
   let taxMeaning = '';
-  const taxRegion = TAX_REGIONS[region];
-  if (taxRegion) {
-    const vatPct = (taxTurnover / taxRegion.vatThreshold) * 100;
-    if (vatPct >= 100) {
-      taxMeaning = "You've crossed the VAT registration line — action needed.";
-    } else if (vatPct >= 70) {
-      taxMeaning = `You're approaching the VAT threshold (${Math.round(vatPct)}% there) — nothing due yet, just so it doesn't surprise you.`;
+  const r = TAX_REGIONS[region];
+  if (r) {
+    if (r.kind === 'none') {
+      taxMeaning = ''; // no personal income tax in this region — nothing to surface
+    } else if (r.kind === 'uae_ct') {
+      if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER) {
+        taxMeaning = "You've crossed the AED 1M turnover line — Corporate Tax registration applies.";
+      } else if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER * 0.7) {
+        taxMeaning = `You're approaching the AED 1M Corporate Tax line (${Math.round((taxTurnover / UAE_CT_REGISTRATION_TURNOVER) * 100)}% there) — nothing due yet, just so it doesn't surprise you.`;
+      }
+    } else {
+      // progressive (Egypt/Jordan)
+      const annual = estimateAnnualTax(taxTurnover, region);
+      if (annual > 0) {
+        taxMeaning = `Based on your income, an estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr in income tax — set aside so filing season isn't a shock.`;
+      }
     }
   }
 
-  // spendingMeaning
   let spendingMeaning = '';
   if (allocation.spending <= 0) {
     spendingMeaning = "After essentials and tax set-aside, there's little left to spend freely — worth looking at fixed costs.";
@@ -611,54 +607,36 @@ export function interpret(
     spendingMeaning = "Free spending is tight this month.";
   }
 
-  // volatilityMeaning
   const volatilityMeaning = volatilityTrend(incomes).message;
 
-  // topInsight + topInsightLevel
   let topInsight = '';
   let topInsightLevel: 'warning' | 'tip' | 'success' = 'success';
-
   const volTrend = volatilityTrend(incomes).trend;
 
   if (runway < 1.5) {
-    topInsight = runwayMeaning;
-    topInsightLevel = 'warning';
+    topInsight = runwayMeaning; topInsightLevel = 'warning';
   } else if (allocation.spending <= 0) {
-    topInsight = spendingMeaning;
-    topInsightLevel = 'warning';
+    topInsight = spendingMeaning; topInsightLevel = 'warning';
   } else if (taxMeaning.includes('crossed')) {
-    topInsight = taxMeaning;
-    topInsightLevel = 'warning';
+    topInsight = taxMeaning; topInsightLevel = 'warning';
   } else if (volTrend === 'choppier') {
-    topInsight = volatilityMeaning;
-    topInsightLevel = 'tip';
+    topInsight = volatilityMeaning; topInsightLevel = 'tip';
   } else if (taxMeaning) {
-    topInsight = taxMeaning;
-    topInsightLevel = 'tip';
+    topInsight = taxMeaning; topInsightLevel = 'tip';
   } else if (outlook === 'strong') {
-    topInsight = outlookMeaning;
-    topInsightLevel = 'tip';
+    topInsight = outlookMeaning; topInsightLevel = 'tip';
   } else if (runway >= 3) {
-    topInsight = runwayMeaning;
-    topInsightLevel = 'success';
+    topInsight = runwayMeaning; topInsightLevel = 'success';
   } else {
-    topInsight = outlookMeaning;
-    topInsightLevel = 'success';
+    topInsight = outlookMeaning; topInsightLevel = 'success';
   }
 
   return {
-    paycheckWhy,
-    runwayMeaning,
-    outlookMeaning,
-    taxMeaning,
-    spendingMeaning,
-    volatilityMeaning,
-    topInsight,
-    topInsightLevel,
+    paycheckWhy, runwayMeaning, outlookMeaning, taxMeaning,
+    spendingMeaning, volatilityMeaning, topInsight, topInsightLevel,
   };
 }
 
-/** Detect signals from the current plan state. */
 export function detectSignals(
   range: IncomeRange,
   allocation: Allocation,
@@ -668,59 +646,38 @@ export function detectSignals(
   const out: Signal[] = [];
 
   if (range.provisional) {
-    out.push({
-      kind: 'tip',
-      title: 'Plan is provisional',
-      detail: 'Log at least 3 months of income for a reliable range. Current estimates are widened to be safe.',
-    });
+    out.push({ kind: 'tip', title: 'Plan is provisional', detail: 'Log at least 3 months of income for a reliable range. Current estimates are widened to be safe.' });
   }
 
   const outlook = computeOutlook(trackedThisMonth, range.likely, fractionElapsed);
   if (outlook === 'running lean') {
-    out.push({
-      kind: 'warning',
-      title: 'Running lean this month',
-      detail: 'Income tracked so far is well below your usual pace. Your paycheck still holds — that\'s what the buffer is for — but ease off non-essentials.',
-    });
+    out.push({ kind: 'warning', title: 'Running lean this month', detail: 'Income tracked so far is well below your usual pace. Your paycheck still holds — that\'s what the buffer is for — but ease off non-essentials.' });
   }
 
   if (allocation.spending < 0) {
-    out.push({
-      kind: 'warning',
-      title: 'Essentials exceed paycheck',
-      detail: 'Your fixed costs are higher than the paycheck your income can safely sustain. Trimming a fixed cost frees real breathing room.',
-    });
+    out.push({ kind: 'warning', title: 'Essentials exceed paycheck', detail: 'Your fixed costs are higher than the paycheck your income can safely sustain. Trimming a fixed cost frees real breathing room.' });
   }
 
   if (outlook === 'strong') {
-    out.push({
-      kind: 'tip',
-      title: 'Strong month — bank it',
-      detail: 'You\'re tracking above your usual pace. A great moment to send extra toward the buffer or a goal.',
-    });
+    out.push({ kind: 'tip', title: 'Strong month — bank it', detail: 'You\'re tracking above your usual pace. A great moment to send extra toward the buffer or a goal.' });
   }
 
   if (out.length === 0) {
-    out.push({
-      kind: 'success',
-      title: 'You\'re on track',
-      detail: 'Buffer\'s healthy and your plan holds. Nothing to do — let it run.',
-    });
+    out.push({ kind: 'success', title: 'You\'re on track', detail: 'Buffer\'s healthy and your plan holds. Nothing to do — let it run.' });
   }
 
   const rank: Record<Signal['kind'], number> = { warning: 0, tip: 1, success: 2 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]).slice(0, 4);
 }
 
-/** Tax registration status: clear / near / over */
+/** Generic threshold status, still used by some screens. */
 export function statusOf(limit: number, turnover: number): TaxStatus {
   if (turnover >= limit) return 'over';
   if (turnover >= limit * 0.7) return 'near';
   return 'clear';
 }
 
-// ── Legacy compatibility shims ────────────────────────────────────────────────
-// Kept so existing db.ts / tax-profiles.ts / API routes still compile.
+// ── Legacy compatibility shims (kept — still imported by db.ts / api routes) ──
 
 export interface TaxProfile {
   region: string;
@@ -765,12 +722,8 @@ export function analyzeIncome(
   stdDev: number;
   volatility: number;
 } {
-  // Convert legacy IncomeEntry to IncomeItem (no currency, assume AED)
   const items: IncomeItem[] = entries.map(e => ({
-    amount: e.amount,
-    currency: 'AED',
-    date: e.date,
-    confidence: 'confirmed' as const,
+    amount: e.amount, currency: 'AED', date: e.date, confidence: 'confirmed' as const,
   }));
   const monthly = groupByMonth(items);
   const sorted = Object.values(monthly).sort((a, b) => a - b);
@@ -790,9 +743,7 @@ export function analyzeIncome(
   }
   return {
     monthsAnalyzed: n,
-    monthlyTotals: Object.entries(monthly)
-      .map(([month, total]) => ({ month, total }))
-      .sort((a, b) => a.month.localeCompare(b.month)),
+    monthlyTotals: Object.entries(monthly).map(([month, total]) => ({ month, total })).sort((a, b) => a.month.localeCompare(b.month)),
     average: Math.round(average),
     median: Math.round(pct(sorted, 0.5)),
     floor: Math.round(pct(sorted, 0.25)),

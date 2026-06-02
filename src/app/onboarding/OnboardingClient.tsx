@@ -20,12 +20,12 @@ import { Cur } from '@/components/keel/ui';
 // ── Region data ──────────────────────────────────────────────────────────────
 
 const ONBOARD_REGIONS = [
-  { name: 'United Arab Emirates', code: 'AE', ccy: 'AED', enables: 'VAT & Corporate Tax lines · Zakat' },
-  { name: 'Saudi Arabia',         code: 'SA', ccy: 'SAR', enables: 'VAT · Zakat' },
-  { name: 'Qatar',                code: 'QA', ccy: 'QAR', enables: 'Zakat' },
-  { name: 'Kuwait',               code: 'KW', ccy: 'KWD', enables: 'Zakat' },
-  { name: 'Egypt',                code: 'EG', ccy: 'EGP', enables: 'VAT' },
-  { name: 'Jordan',               code: 'JO', ccy: 'JOD', enables: 'Sales tax' },
+  { name: 'United Arab Emirates', code: 'AE', ccy: 'AED', enables: 'Corporate Tax line · Zakat' },
+  { name: 'Saudi Arabia',         code: 'SA', ccy: 'SAR', enables: 'No income tax · Zakat' },
+  { name: 'Qatar',                code: 'QA', ccy: 'QAR', enables: 'No income tax · Zakat' },
+  { name: 'Kuwait',               code: 'KW', ccy: 'KWD', enables: 'No income tax · Zakat' },
+  { name: 'Egypt',                code: 'EG', ccy: 'EGP', enables: 'Progressive income tax' },
+  { name: 'Jordan',               code: 'JO', ccy: 'JOD', enables: 'Progressive income tax' },
 ] as const;
 
 type RegionEntry = typeof ONBOARD_REGIONS[number];
@@ -84,7 +84,6 @@ interface ObData {
   authError: string;
   incomePattern: 'monthly' | 'quarterly' | 'project' | 'irregular' | '';
   targetMonths: number;
-  vatRegistered: boolean | null;
   annualRevenue: string;
   employmentType: 'sole_trader' | 'company' | 'employed_freelance' | 'employed' | '';
   multiCurrency: boolean | null;
@@ -116,7 +115,6 @@ const INITIAL_DATA: ObData = {
   authError: '',
   incomePattern: '',
   targetMonths: 3,
-  vatRegistered: null,
   annualRevenue: '',
   employmentType: '',
   multiCurrency: null,
@@ -511,33 +509,15 @@ function EssentialsStep({
         <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} placeholder="0 (optional)" />
       </ObField>
 
-      {(data.regionCode === 'AE' || data.regionCode === 'SA') && (
+      {(data.regionCode === 'AE' || data.regionCode === 'EG' || data.regionCode === 'JO') && (
         <div style={{ marginBottom: 14 }}>
-          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>VAT registration</div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: data.vatRegistered === true ? 10 : 0 }}>
-            {[{ v: false, label: 'Not registered' }, { v: true, label: 'VAT registered' }].map(({ v, label }) => (
-              <button key={String(v)} type="button"
-                onClick={() => set({ vatRegistered: v })}
-                style={{
-                  padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                  fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
-                  background: data.vatRegistered === v ? 'var(--pine)' : 'var(--surface-2)',
-                  color: data.vatRegistered === v ? 'var(--on-pine)' : 'var(--muted)',
-                }}
-              >{label}</button>
-            ))}
-          </div>
-          {data.vatRegistered === false && (
-            <p style={{ margin: '6px 2px 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-              Keel will track your revenue toward the AED 375,000 threshold.
-            </p>
-          )}
-          {data.vatRegistered === true && (
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Est. annual revenue (for VAT filing)</div>
-              <ObAmount value={data.annualRevenue} onChange={(v) => set({ annualRevenue: v })} ccy={data.ccy} placeholder="0 (optional)" />
-            </div>
-          )}
+          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 8 }}>Est. annual revenue</div>
+          <ObAmount value={data.annualRevenue} onChange={(v) => set({ annualRevenue: v })} ccy={data.ccy} placeholder="0 (optional)" />
+          <p style={{ margin: '6px 2px 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+            {data.regionCode === 'AE'
+              ? 'Keel watches this toward the AED 1M Corporate Tax line — an estimate, not tax advice.'
+              : 'Keel estimates your income tax from this — an estimate, not tax advice.'}
+          </p>
         </div>
       )}
 
@@ -1596,7 +1576,6 @@ export function OnboardingClient(): React.ReactElement {
       incomes: incomeItems,
       incomePattern: data.incomePattern || undefined,
       employmentType: data.employmentType || undefined,
-      vatRegistered: data.vatRegistered ?? undefined,
       multiCurrency: data.multiCurrency ?? undefined,
       annualRevenue: annualRevenue > 0 ? annualRevenue : undefined,
       dependants: data.dependants,

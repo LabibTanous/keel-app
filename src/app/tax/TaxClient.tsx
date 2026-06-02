@@ -3,7 +3,11 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
-import { TAX_REGIONS, statusOf, estimateCorporateTax, ASSUMED_PROFIT_MARGIN } from '@/lib/engine';
+import {
+  TAX_REGIONS, regionHasTax, estimateAnnualTax, statusOf, fromAED, FX_AS_OF,
+  ASSUMED_PROFIT_MARGIN, UAE_CT_REGISTRATION_TURNOVER, UAE_CT_FREE_THRESHOLD,
+  EGYPT_EXEMPTION_EGP, JORDAN_EXEMPTION_JOD,
+} from '@/lib/engine';
 import { Card, Disclaimer } from '@/components/keel/ui';
 import { IconCalendar } from '@/components/keel/icons';
 import { Dock } from '@/components/keel/Dock';
@@ -14,161 +18,127 @@ import { KEEL_OPEN_ADD, KEEL_OPEN_ASSISTANT } from '@/components/keel/GlobalOver
 function cur(n: number, ccy: string): string {
   return ccy + ' ' + Math.round(n).toLocaleString('en-US');
 }
-
-function moneyK(n: number, ccy: string): string {
-  return ccy + ' ' + (n / 1000).toFixed(0) + 'k';
+function approxAED(n: number): string {
+  return '≈ AED ' + Math.round(n).toLocaleString('en-US');
 }
-
-// ── Region flag emoji ─────────────────────────────────────────────────────────
 
 const REGION_FLAG: Record<string, string> = {
-  AE: '🇦🇪',
-  SA: '🇸🇦',
+  AE: '🇦🇪', SA: '🇸🇦', QA: '🇶🇦', KW: '🇰🇼', EG: '🇪🇬', JO: '🇯🇴',
 };
 
-// ── Threshold rules (derived from TAX_REGIONS in engine.ts) ──────────────────
-
-// Corporate Tax math lives in engine.ts (estimateCorporateTax) so the displayed
-// estimate and the money actually set aside in computeAllocation come from ONE
-// formula. ASSUMED_PROFIT_MARGIN (0.30) is imported from there for the copy below.
 const MARGIN_PCT = Math.round(ASSUMED_PROFIT_MARGIN * 100);
 
-interface Threshold {
-  id: string;
-  name: string;
-  limit: number;
-  clearMsg: string;
-  nearMsg: string;
-  overMsg: string;
-  estimate: (t: number, ccy: string) => string;
-}
+// ── Turnover gauge (UAE Corporate Tax only) ─────────────────────────────────
 
-const THRESHOLD_RULES: Record<string, Threshold[]> = {
-  AE: [
-    {
-      id: 'vat',
-      name: 'VAT registration',
-      limit: 375_000,
-      clearMsg: "Well under the line — nothing to do. Keel will flag it as you get close.",
-      nearMsg: "Closing in on the VAT line — worth getting your paperwork ready to register.",
-      overMsg: "Over the line — VAT registration is required within 30 days.",
-      estimate: (t, ccy) => `≈ ${cur(t * 0.05 / 4, ccy)} of VAT to collect each quarter at 5%.`,
-    },
-    {
-      id: 'ct',
-      name: 'Corporate Tax',
-      limit: 1_000_000,
-      clearMsg: "Doesn't apply yet — you're under the AED 1M turnover line for sole freelancers.",
-      nearMsg: "Approaching the AED 1M line where Corporate Tax starts to apply.",
-      overMsg: "Now applies — register, then file 9% on profit above AED 375k.",
-      estimate: (t, ccy) => {
-        const ct = estimateCorporateTax(t, 'AE');
-        return `≈ ${cur(ct, ccy)} a year, very roughly, on profit above AED 375k (assuming ~${MARGIN_PCT}% margin).`;
-      },
-    },
-  ],
-  SA: [
-    {
-      id: 'vat',
-      name: 'VAT registration',
-      limit: 375_000,
-      clearMsg: "Well under the line — nothing to do yet.",
-      nearMsg: "Closing in on the VAT line — prepare to register.",
-      overMsg: "Over the line — VAT registration is required.",
-      estimate: (t, ccy) => `≈ ${cur(t * 0.15 / 4, ccy)} of VAT to collect each quarter at 15%.`,
-    },
-  ],
-};
-
-const STATUS_STYLE: Record<string, { label: string; color: string }> = {
-  clear: { label: 'Not yet',  color: 'var(--muted)' },
-  near:  { label: 'Heads up', color: 'var(--gold)'  },
-  over:  { label: 'Now due',  color: 'var(--clay)'  },
-};
-
-// ── Turnover gauge ─────────────────────────────────────────────────────────────
-
-interface TurnoverCardProps {
-  turnover: number;
-  ccy: string;
-  nextLimit?: number;
-  nextName?: string;
-}
-
-function TurnoverCard({ turnover, ccy, nextLimit, nextName }: TurnoverCardProps) {
-  const pct = nextLimit ? Math.min(100, Math.round((turnover / nextLimit) * 100)) : 100;
+function TurnoverCard({ turnover, limit, name }: { turnover: number; limit: number; name: string }) {
+  const pct = Math.min(100, Math.round((turnover / limit) * 100));
   const barColor = pct >= 100 ? 'var(--clay)' : pct >= 70 ? 'var(--gold)' : 'var(--pine)';
   return (
     <Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-        <span className="smallcaps">Tracked turnover · last 12 months</span>
+        <span className="smallcaps">Tracked turnover · this year</span>
       </div>
-      <div className="serif tnum" style={{ fontSize: 34, color: 'var(--ink)', lineHeight: 1 }}>{cur(turnover, ccy)}</div>
-      {nextLimit ? (
-        <>
-          <div style={{ position: 'relative', height: 10, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', margin: '16px 0 8px' }}>
-            <div style={{ width: pct + '%', height: '100%', background: barColor, borderRadius: 999, transition: 'width 0.5s ease' }} />
+      <div className="serif tnum" style={{ fontSize: 34, color: 'var(--ink)', lineHeight: 1 }}>{cur(turnover, 'AED')}</div>
+      <div style={{ position: 'relative', height: 10, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', margin: '16px 0 8px' }}>
+        <div style={{ width: pct + '%', height: '100%', background: barColor, borderRadius: 999, transition: 'width 0.5s ease' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}>
+        <span><b style={{ color: 'var(--ink)' }}>{pct}%</b> of the {name} line</span>
+        <span>{cur(limit, 'AED')}</span>
+      </div>
+    </Card>
+  );
+}
+
+// ── UAE Corporate Tax card ──────────────────────────────────────────────────
+
+function CorporateTaxCard({ turnover }: { turnover: number }) {
+  const st = statusOf(UAE_CT_REGISTRATION_TURNOVER, turnover);
+  const color = st === 'over' ? 'var(--clay)' : st === 'near' ? 'var(--gold)' : 'var(--muted)';
+  const label = st === 'over' ? 'Now due' : st === 'near' ? 'Heads up' : 'Not yet';
+  const msg = st === 'over'
+    ? 'Over the AED 1M turnover line — Corporate Tax registration applies. File 9% on profit above AED 375k.'
+    : st === 'near'
+      ? 'Approaching the AED 1M turnover line where Corporate Tax starts to apply.'
+      : "Doesn't apply yet — you're under the AED 1M turnover line for sole freelancers.";
+  const annual = estimateAnnualTax(turnover, 'AE');
+  return (
+    <Card style={{ opacity: st === 'clear' ? 0.92 : 1 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Corporate Tax</div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>over {cur(UAE_CT_REGISTRATION_TURNOVER, 'AED')} turnover</div>
+        </div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color, background: 'var(--surface-2)', padding: '5px 11px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />{label}
+        </span>
+      </div>
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>{msg}</p>
+      {st === 'over' && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
+          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>
+            {approxAED(annual)} a year, very roughly, on profit above {cur(UAE_CT_FREE_THRESHOLD, 'AED')} (assuming ~{MARGIN_PCT}% margin).
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}>
-            <span><b style={{ color: 'var(--ink)' }}>{pct}%</b> of the {nextName} line</span>
-            <span>{cur(nextLimit, ccy)}</span>
-          </div>
-        </>
-      ) : (
-        <p style={{ margin: '12px 0 0', fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
-          Keel watches this against the lines that apply where you are.
-        </p>
+          <Disclaimer style={{ marginTop: 9 }}>Estimate — not tax advice.</Disclaimer>
+        </div>
       )}
     </Card>
   );
 }
 
-// ── One obligation ─────────────────────────────────────────────────────────────
+// ── Progressive income tax card (Egypt / Jordan) ─────────────────────────────
 
-interface TaxItemProps {
-  item: Threshold;
-  turnover: number;
-  ccy: string;
-  registered?: boolean; // user self-reported they are registered for this line (VAT)
-}
-
-const REGISTERED_STYLE = { label: 'Registered', color: 'var(--pine)' };
-
-function TaxItem({ item, turnover, ccy, registered }: TaxItemProps) {
-  const rawStatus = statusOf(item.limit, turnover);
-  // A user who says they're registered is treated as over the line regardless of
-  // tracked turnover — they have an active obligation either way.
-  const st = registered ? 'over' : rawStatus;
-  const s = registered ? REGISTERED_STYLE : STATUS_STYLE[st];
-  const pct = Math.min(100, Math.round((turnover / item.limit) * 100));
-  const msg = registered
-    ? "You're registered — file your VAT returns each period and keep collecting it on invoices."
-    : st === 'over' ? item.overMsg : st === 'near' ? item.nearMsg : item.clearMsg;
+function ProgressiveTaxCard({ region, turnover }: { region: string; turnover: number }) {
+  const r = TAX_REGIONS[region];
+  const ccy = r.currency;
+  const exemption = region === 'EG' ? EGYPT_EXEMPTION_EGP : JORDAN_EXEMPTION_JOD;
+  const localIncome = fromAED(turnover, ccy);
+  const annualAED = estimateAnnualTax(turnover, region);
+  const monthlyAED = Math.round(annualAED / 12);
+  const aboveExemption = localIncome > exemption;
   return (
-    <Card style={{ opacity: st === 'clear' ? 0.92 : 1 }}>
+    <Card>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>{item.name}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>over {cur(item.limit, ccy)} turnover</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Personal income tax</div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>progressive · {r.label}</div>
         </div>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: s.color,
-          background: 'var(--surface-2)', padding: '5px 11px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
-        }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color }} />
-          {s.label}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: aboveExemption ? 'var(--gold)' : 'var(--muted)', background: 'var(--surface-2)', padding: '5px 11px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: aboveExemption ? 'var(--gold)' : 'var(--muted)' }} />
+          {aboveExemption ? 'Set aside' : 'Below exemption'}
         </span>
       </div>
-      <div style={{ position: 'relative', height: 7, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', margin: '4px 0 10px' }}>
-        <div style={{ width: pct + '%', height: '100%', background: s.color, borderRadius: 999, transition: 'width 0.5s ease' }} />
-      </div>
-      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>{msg}</p>
-      {st === 'over' && (
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        {aboveExemption
+          ? `Your income is above the ${cur(exemption, ccy)} personal exemption, so progressive income tax applies on the rest. Keel sets a little aside each month so filing season isn't a shock.`
+          : `Your tracked income is under the ${cur(exemption, ccy)} personal exemption — nothing due yet.`}
+      </p>
+      {aboveExemption && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
-          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>{item.estimate(turnover, ccy)}</div>
-          <Disclaimer style={{ marginTop: 9 }} />
+          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>
+            {approxAED(annualAED)} a year ({approxAED(monthlyAED)}/month), on roughly {cur(localIncome, ccy)} of net professional income.
+          </div>
+          <Disclaimer style={{ marginTop: 9 }}>
+            Estimate — not tax advice. Brackets &amp; FX are static ({r.label} 2025, rates as of {FX_AS_OF}).
+          </Disclaimer>
         </div>
       )}
+    </Card>
+  );
+}
+
+// ── No-tax calm state (GCC except UAE) ───────────────────────────────────────
+
+function NoTaxCard({ label }: { label: string }) {
+  return (
+    <Card style={{ textAlign: 'center', padding: '34px 22px' }}>
+      <span style={{ width: 52, height: 52, borderRadius: 16, background: 'var(--pine-soft)', color: 'var(--pine)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <IconCalendar size={26} />
+      </span>
+      <div className="serif" style={{ fontSize: 20, color: 'var(--ink)', marginBottom: 6 }}>No personal income tax in {label}</div>
+      <p style={{ margin: '0 auto', maxWidth: 260, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        Freelancers in {label} pay no personal income tax. Keel keeps watching — if that ever changes, it&apos;ll surface here, early and calmly.
+      </p>
     </Card>
   );
 }
@@ -182,11 +152,7 @@ function ZakatItem({ ccy, wealth }: { ccy: string; wealth: number }) {
     <Card>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            width: 30, height: 30, borderRadius: 9, background: 'var(--zakat-soft)', color: 'var(--zakat)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            fontFamily: 'var(--font-display)', fontSize: 15,
-          }}>Z</span>
+          <span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--zakat-soft)', color: 'var(--zakat)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font-display)', fontSize: 15 }}>Z</span>
           <div>
             <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Zakat</div>
             <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>2.5% of wealth held a lunar year</div>
@@ -221,23 +187,14 @@ export function TaxClient() {
   const label = taxRegion?.label ?? region;
   const flag = REGION_FLAG[region] ?? '';
 
-  const items = THRESHOLD_RULES[region] ?? [];
-  const gcc = region === 'AE' || region === 'SA';
+  const kind = taxRegion?.kind ?? 'none';
+  const hasTax = regionHasTax(region);
+  // Zakat is offered in GCC (AE/SA/QA/KW) — a religious obligation, independent of income tax.
+  const gcc = region === 'AE' || region === 'SA' || region === 'QA' || region === 'KW';
   const showZakat = zakatOn && gcc && zakatableWealth > 0;
-
-  const surfaced = items.filter(i => statusOf(i.limit, turnover) !== 'clear');
-  const nothingApplies = items.length === 0 && !showZakat;
-
-  // gauge points at the next unmet line
-  const unmetItems = items.filter(i => turnover < i.limit);
-  const unmet = unmetItems.length > 0 ? unmetItems.reduce((a, b) => a.limit < b.limit ? a : b) : undefined;
-  // Fix: use reduce instead of sort to find max item
-  const top = items.length > 0 ? items.reduce((a, b) => a.limit > b.limit ? a : b) : undefined;
-  const next = unmet ?? top;
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '60px 18px 14px' }}>
           <Link href="/dashboard" style={{
@@ -261,91 +218,46 @@ export function TaxClient() {
         </div>
       </div>
 
-      {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 18px 100px' }}>
-        {nothingApplies ? (
-          <div className="rise" style={{ paddingTop: 6 }}>
-            <Card style={{ textAlign: 'center', padding: '34px 22px' }}>
-              <span style={{
-                width: 52, height: 52, borderRadius: 16, background: 'var(--pine-soft)', color: 'var(--pine)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-              }}>
-                <IconCalendar size={26} />
-              </span>
-              <div className="serif" style={{ fontSize: 20, color: 'var(--ink)', marginBottom: 6 }}>Nothing to register here</div>
-              <p style={{ margin: '0 auto', maxWidth: 250, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
-                No tax lines apply in your region right now. If that changes, Keel will surface it here — early and calmly.
-              </p>
-            </Card>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {items.length > 0 && (
-              <div className="rise">
-                <TurnoverCard
-                  turnover={turnover}
-                  ccy={ccy}
-                  nextLimit={next?.limit}
-                  nextName={next?.name.replace(' registration', '')}
-                />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {plan.interpretations.taxMeaning && (
+            <div className="rise">
+              <div style={{ background: 'var(--gold-soft)', borderRadius: 'var(--r-card)', padding: '14px var(--pad)', fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink)', boxShadow: 'var(--shadow-sm)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--gold)', marginRight: 6 }}>Tax note</span>
+                {plan.interpretations.taxMeaning}
               </div>
-            )}
+            </div>
+          )}
 
-            {plan.interpretations.taxMeaning && (
-              <div className="rise" style={{ animationDelay: '60ms' }}>
-                <div style={{
-                  background: 'var(--gold-soft)', borderRadius: 'var(--r-card)',
-                  padding: '14px var(--pad)', fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink)',
-                  marginTop: 12, boxShadow: 'var(--shadow-sm)',
-                }}>
-                  <span style={{ fontWeight: 600, color: 'var(--gold)', marginRight: 6 }}>Tax note</span>
-                  {plan.interpretations.taxMeaning}
-                </div>
-              </div>
-            )}
+          {kind === 'uae_ct' && (
+            <>
+              <div className="rise"><TurnoverCard turnover={turnover} limit={UAE_CT_REGISTRATION_TURNOVER} name="Corporate Tax" /></div>
+              <div className="rise" style={{ animationDelay: '60ms' }}><CorporateTaxCard turnover={turnover} /></div>
+            </>
+          )}
 
-            {/* Heads-up banner when near/over */}
-            {surfaced.length > 0 && (
-              <div className="rise" style={{ animationDelay: '70ms' }}>
-                <div style={{
-                  background: 'var(--gold-soft)', borderRadius: 'var(--r-card)', padding: '15px var(--pad)',
-                  display: 'flex', gap: 11, alignItems: 'flex-start',
-                }}>
-                  <span style={{ color: 'var(--gold)', flexShrink: 0, marginTop: 1 }}>
-                    <IconCalendar size={20} />
-                  </span>
-                  <div style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink)' }}>
-                    {surfaced.some(i => statusOf(i.limit, turnover) === 'over')
-                      ? <span>A tax line needs action. Keel flagged it early so there&apos;s time to sort it calmly.</span>
-                      : <span>You&apos;re approaching a tax line. Nothing&apos;s due yet — this is just an early heads-up.</span>}
-                  </div>
-                </div>
-              </div>
-            )}
+          {kind === 'progressive' && (
+            <div className="rise"><ProgressiveTaxCard region={region} turnover={turnover} /></div>
+          )}
 
-            {items.map((item, i) => (
-              <div key={item.id} className="rise" style={{ animationDelay: `${110 + i * 60}ms` }}>
-                <TaxItem item={item} turnover={turnover} ccy={ccy} registered={item.id === 'vat' && !!profile.vatRegistered} />
-              </div>
-            ))}
+          {kind === 'none' && (
+            <div className="rise" style={{ paddingTop: 6 }}><NoTaxCard label={label} /></div>
+          )}
 
-            {showZakat && (
-              <div className="rise" style={{ animationDelay: `${110 + items.length * 60}ms` }}>
-                <ZakatItem ccy={ccy} wealth={zakatableWealth} />
-              </div>
-            )}
+          {showZakat && (
+            <div className="rise" style={{ animationDelay: '110ms' }}>
+              <ZakatItem ccy={ccy} wealth={zakatableWealth} />
+            </div>
+          )}
 
-            <p className="rise" style={{
-              animationDelay: `${160 + items.length * 60}ms`,
-              margin: '2px 8px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', textAlign: 'center',
-            }}>
-              Keel surfaces a line only when it applies to you — so this stays quiet until it matters.
-            </p>
-          </div>
-        )}
+          <p className="rise" style={{ animationDelay: '160ms', margin: '2px 8px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', textAlign: 'center' }}>
+            {hasTax
+              ? 'Keel surfaces a line only when it applies to you — so this stays quiet until it matters.'
+              : 'Nothing to file here right now. Keel will surface it early if that changes.'}
+          </p>
+        </div>
       </div>
 
-      {/* No active tab — accessed from home */}
       <Dock
         links={{ home: '/dashboard', coming: '/coming', goal: '/goal' }}
         onAdd={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
