@@ -52,33 +52,6 @@ export const getUserByLogToken = query({
   },
 });
 
-export const updateUserProfile = mutation({
-  args: {
-    userId: v.string(),
-    regionCode: v.optional(v.string()),
-    incomeType: v.optional(v.string()),
-    isMuslim: v.optional(v.boolean()),
-    monthlyExpenses: v.optional(v.number()),
-    savingsBalance: v.optional(v.number()),
-    onboardingComplete: v.optional(v.boolean()),
-    paycheckAmount: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const { userId, ...fields } = args;
-    const existing = await ctx.db
-      .query("keel_users")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-    if (!existing) throw new Error(`User ${userId} not found`);
-    const update: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(fields)) {
-      if (val !== undefined) update[k] = val;
-    }
-    await ctx.db.patch(existing._id, update);
-    return await ctx.db.get(existing._id);
-  },
-});
-
 export const setPaycheck = mutation({
   args: { userId: v.string(), amount: v.number() },
   handler: async (ctx, args) => {
@@ -88,30 +61,6 @@ export const setPaycheck = mutation({
       .first();
     if (existing) await ctx.db.patch(existing._id, { paycheckAmount: args.amount });
     return args.amount;
-  },
-});
-
-export const updateGoal = mutation({
-  args: {
-    userId: v.string(),
-    goalName: v.optional(v.string()),
-    goalTarget: v.optional(v.number()),
-    goalCurrent: v.optional(v.number()),
-    goalMonthly: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const { userId, ...fields } = args;
-    const existing = await ctx.db
-      .query("keel_users")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-    if (!existing) throw new Error(`User ${userId} not found`);
-    const update: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(fields)) {
-      if (val !== undefined) update[k] = val;
-    }
-    await ctx.db.patch(existing._id, update);
-    return await ctx.db.get(existing._id);
   },
 });
 

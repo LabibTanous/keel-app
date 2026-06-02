@@ -49,25 +49,6 @@ export async function getUser(id: string) {
   return row ?? null;
 }
 
-export async function updateUserProfile(
-  id: string,
-  data: {
-    regionCode?: string;
-    incomeType?: string;
-    isMuslim?: boolean;
-    monthlyExpenses?: number;
-    savingsBalance?: number;
-    onboardingComplete?: boolean;
-    paycheckAmount?: number;
-  }
-) {
-  const client = getConvexClient();
-  return await client.mutation(api.users.updateUserProfile, {
-    userId: id,
-    ...data,
-  });
-}
-
 export async function getOrSetPaycheck(userId: string, amount?: number): Promise<number | null> {
   const client = getConvexClient();
   if (amount !== undefined) {
@@ -76,14 +57,6 @@ export async function getOrSetPaycheck(userId: string, amount?: number): Promise
   }
   const row = await client.query(api.users.getUser, { userId });
   return row?.paycheckAmount != null ? Number(row.paycheckAmount) : null;
-}
-
-export async function updateGoal(
-  userId: string,
-  goalData: { goalName?: string; goalTarget?: number; goalCurrent?: number; goalMonthly?: number }
-) {
-  const client = getConvexClient();
-  return await client.mutation(api.users.updateGoal, { userId, ...goalData });
 }
 
 // ─── Income entries ───────────────────────────────────────────────────────────

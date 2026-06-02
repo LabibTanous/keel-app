@@ -139,25 +139,35 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   const goalTarget = profile.essentials * profile.targetMonths;
   const goalInfo = goalTradeoff(goalTarget, profile.bufferBalance, allocation.buffer, allocation.spending);
 
-  // Monthly goal contributions
+  // Monthly goal contributions.
+  // alreadySaved draws down the buffer proportionally across goals so contributions
+  // shrink as the user's savings grow (instead of always assuming zero progress).
   const today = new Date();
+  const totalGoalTarget = (userGoals || []).reduce((s, g) => s + Math.max(0, g.targetAmt), 0);
   let monthlyGoalContrib = 0;
   for (const g of (userGoals || [])) {
     if (g.targetAmt > 0 && g.targetDate) {
       const [y, m] = g.targetDate.split('-').map(Number);
       const targetMs = new Date(y, m - 1, 1).getTime() - today.getTime();
       const monthsLeft = Math.max(1, Math.round(targetMs / (1000 * 60 * 60 * 24 * 30.44)));
-      const alreadySaved = 0; // simplification — improve later
-      monthlyGoalContrib += Math.round((g.targetAmt - alreadySaved) / monthsLeft);
+      // Buffer is shared across goals — allocate this goal's share of current savings.
+      const share = totalGoalTarget > 0 ? g.targetAmt / totalGoalTarget : 0;
+      const alreadySaved = Math.min(g.targetAmt, profile.bufferBalance * share);
+      monthlyGoalContrib += Math.max(0, Math.round((g.targetAmt - alreadySaved) / monthsLeft));
     }
   }
   monthlyGoalContrib = Math.min(monthlyGoalContrib, Math.floor(allocation.spending * 0.4)); // cap at 40% of spending
 
-  // Monthly big payment reserve
+  // Monthly big payment reserve — save over the real months-until-due (fallback 6).
+  const currentYM = new Date().getFullYear() * 12 + new Date().getMonth();
   let monthlyBigPaymentReserve = 0;
   for (const bp of (bigPayments || [])) {
-    // assume payments need to be saved over 6 months
-    monthlyBigPaymentReserve += Math.round(bp.amt / 6);
+    let monthsUntil = 6;
+    if (bp.dueDate) {
+      const [dy, dm] = bp.dueDate.split('-').map(Number);
+      if (dy && dm) monthsUntil = Math.max(1, (dy * 12 + (dm - 1)) - currentYM);
+    }
+    monthlyBigPaymentReserve += Math.round(bp.amt / monthsUntil);
   }
   monthlyBigPaymentReserve = Math.min(monthlyBigPaymentReserve, Math.floor(allocation.spending * 0.3)); // cap at 30%
 

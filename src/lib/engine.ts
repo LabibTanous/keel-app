@@ -31,13 +31,20 @@ export interface IncomeItem {
 export interface Profile {
   region: string;          // 'AE' | 'SA' | ...
   currency: string;        // home currency code
-  essentials: number;      // monthly fixed costs in home currency
-  bufferBalance: number;   // current buffer/savings in home currency
+  essentials: number;      // monthly fixed costs — stored in AED
+  bufferBalance: number;   // current buffer/savings — stored in AED
   targetMonths: number;    // target buffer depth (default 3)
   zakatOn: boolean;
-  zakatableWealth?: number; // current zakatable wealth (gold, cash, etc.)
+  zakatableWealth?: number; // current zakatable wealth (gold, cash, etc.) in AED
   incomes: IncomeItem[];
   paycheckOverride?: number; // user has manually set a paycheck amount
+  // ── Onboarding profile attributes ──────────────────────────────────────────
+  incomePattern?: 'monthly' | 'quarterly' | 'project' | 'irregular';
+  employmentType?: 'sole_trader' | 'company' | 'employed_freelance' | 'employed';
+  vatRegistered?: boolean;
+  multiCurrency?: boolean;
+  annualRevenue?: number;  // self-reported annual revenue in AED (VAT filing)
+  dependants?: number;
 }
 
 export interface IncomeRange {

@@ -41,8 +41,9 @@ export interface BigPayment {
   m: string;       // display month label e.g. 'Jul'
   pos: number;     // timeline position 0..1
   name: string;
-  amt: number;     // amount in home currency (AED)
+  amt: number;     // amount in AED
   status: 'set' | 'saving' | 'soon';
+  dueDate?: string; // 'YYYY-MM' — used to compute months-until-due for reserve
 }
 
 export const BIG_PAYMENTS: BigPayment[] = [

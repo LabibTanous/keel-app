@@ -28,7 +28,7 @@ function computeProjectedLabel(saved: number, target: number, monthly: number): 
 function GoalHero({ saved, target, monthly, behind, goalName }: {
   saved: number; target: number; monthly: number; behind: boolean; goalName: string;
 }) {
-  const pct = Math.min(100, Math.round((saved / target) * 100));
+  const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
   const projLabel = computeProjectedLabel(saved, target, monthly)
     ? `≈ ${computeProjectedLabel(saved, target, monthly)}`
     : (behind ? '≈ –' : 'Done');

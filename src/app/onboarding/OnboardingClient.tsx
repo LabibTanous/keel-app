@@ -11,7 +11,7 @@ import { signIn } from 'next-auth/react';
 import { usePlan } from '@/lib/store';
 import { computePlan } from '@/lib/store';
 import type { UserGoal } from '@/lib/store';
-import { groupByMonth, computeRange, computePaycheck, computeAllocation } from '@/lib/engine';
+import { groupByMonth, computeRange, computePaycheck, computeAllocation, toAED } from '@/lib/engine';
 import type { Profile, IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
 import { Card } from '@/components/keel/ui';
@@ -1566,18 +1566,21 @@ export function OnboardingClient(): React.ReactElement {
 
     const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes, data.incomePattern);
 
-    const essentials =
+    // Essentials entered in the user's home currency — convert to AED (engine works in AED).
+    const essentialsHome =
       (parseInt(data.rent.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.bills.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0) +
       data.subscriptionsList.reduce((s, r) => s + (parseInt(r.amt.replace(/[^0-9]/g, ''), 10) || 0), 0) +
       (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
+    const essentials = Math.round(toAED(essentialsHome, data.ccy));
 
-    const bufferBalance = computeBufferBalance(data);
+    const bufferBalance = Math.round(toAED(computeBufferBalance(data), data.ccy));
+    const annualRevenue = Math.round(toAED(parseInt(data.annualRevenue.replace(/[^0-9]/g, ''), 10) || 0, data.ccy));
     const zakatOn = data.regionCode === 'AE' || data.regionCode === 'SA';
 
-    // Zakat nisab adjustment: dependants reduce the zakatable portion slightly
-    // Each dependant represents ~AED 3,000/year in personal allowance
+    // Zakat nisab adjustment: dependants reduce the zakatable portion slightly.
+    // Each dependant represents ~AED 3,000/year in personal allowance (bufferBalance is already AED).
     const dependantAllowance = data.dependants * 3000;
     const zakatableWealth = zakatOn ? Math.max(0, bufferBalance - dependantAllowance) : 0;
 
@@ -1590,6 +1593,12 @@ export function OnboardingClient(): React.ReactElement {
       zakatOn,
       zakatableWealth,
       incomes: incomeItems,
+      incomePattern: data.incomePattern || undefined,
+      employmentType: data.employmentType || undefined,
+      vatRegistered: data.vatRegistered ?? undefined,
+      multiCurrency: data.multiCurrency ?? undefined,
+      annualRevenue: annualRevenue > 0 ? annualRevenue : undefined,
+      dependants: data.dependants,
     };
 
     const userId = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -1627,10 +1636,10 @@ export function OnboardingClient(): React.ReactElement {
     }
 
     // Build big payments list before adding to store so we can persist them too
-    const bigPaymentItems: { id: string; m: string; pos: number; name: string; amt: number; status: 'saving' } [] = [];
+    const bigPaymentItems: { id: string; m: string; pos: number; name: string; amt: number; status: 'saving'; dueDate?: string } [] = [];
     for (const bp of data.bigPayments) {
-      const amt = parseInt(bp.amt.replace(/[^0-9]/g, ''), 10);
-      if (bp.name.trim() && amt > 0) {
+      const amtHome = parseInt(bp.amt.replace(/[^0-9]/g, ''), 10);
+      if (bp.name.trim() && amtHome > 0) {
         const dueMon = bp.dueDate
           ? new Date(bp.dueDate + '-01').toLocaleString('en', { month: 'short' })
           : 'Soon';
@@ -1639,8 +1648,9 @@ export function OnboardingClient(): React.ReactElement {
           m: dueMon,
           pos: 0.5,
           name: bp.name.trim(),
-          amt,
+          amt: Math.round(toAED(amtHome, data.ccy)),
           status: 'saving',
+          dueDate: bp.dueDate || undefined,
         });
       }
     }

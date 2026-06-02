@@ -219,7 +219,7 @@ function AllocationSection({
   buffer: number;
   spending: number;
 }) {
-  const buckets: [string, number, string][] = zakatOn ? [
+  const buckets: [string, number, string][] = (zakatOn && zakat > 0) ? [
     ['Rent & bills',    rentAndBills, 'var(--pine)'],
     ['Tax set-aside',   tax,          'var(--gold)'],
     ['Zakat set-aside', zakat,        'var(--zakat)'],

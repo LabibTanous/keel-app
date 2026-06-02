@@ -418,7 +418,7 @@ export function PaycheckClient() {
                   const target = profile.essentials * profile.targetMonths;
                   const add = Math.max(plan.range.likely - localWage, 0);
                   const projected = profile.bufferBalance + add * 6;
-                  const pPct = Math.min(100, Math.round((projected / target) * 100));
+                  const pPct = target > 0 ? Math.min(100, Math.round((projected / target) * 100)) : 0;
                   const months = add > 0 ? Math.ceil((target - profile.bufferBalance) / add) : null;
                   return (
                     <>
