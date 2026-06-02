@@ -12,6 +12,7 @@ import { usePlan } from '@/lib/store';
 import { computePlan } from '@/lib/store';
 import { groupByMonth, computeRange, computePaycheck, computeAllocation } from '@/lib/engine';
 import type { Profile, IncomeItem } from '@/lib/engine';
+import type { BigPayment } from '@/lib/demo-seed';
 import { Card } from '@/components/keel/ui';
 import { Cur } from '@/components/keel/ui';
 
@@ -39,6 +40,11 @@ interface IncomeRow {
   date?: string;
 }
 
+interface ObBigPayment {
+  name: string;
+  amt: string;
+}
+
 interface ObData {
   region: string;
   regionCode: string;
@@ -50,6 +56,9 @@ interface ObData {
   subscriptions: string;
   otherExpenses: string;
   incomes: IncomeRow[];
+  goalName: string;
+  goalAmt: string;
+  bigPayments: ObBigPayment[];
   email: string;
   password: string;
   authError: string;
@@ -68,6 +77,9 @@ const INITIAL_DATA: ObData = {
   incomes: [
     { amt: '', ccy: 'AED', recurring: null, months: 6, dayOfMonth: 1 },
   ],
+  goalName: '',
+  goalAmt: '',
+  bigPayments: [],
   email: '',
   password: '',
   authError: '',
@@ -365,6 +377,195 @@ function SavingsStep({
       </ObField>
       <p style={{ margin: '2px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
         No buffer yet? Leave it at zero — Keel will help you build one from your first steady months.
+      </p>
+    </div>
+  );
+}
+
+// ── Step: Goals ────────────────────────────────────────────────────────────────
+
+const GOAL_PRESETS = [
+  'Emergency fund',
+  'Home / property',
+  'Vacation',
+  'Car',
+  'Education',
+  'New business',
+];
+
+function GoalsStep({
+  data,
+  set,
+}: {
+  data: ObData;
+  set: (patch: Partial<ObData>) => void;
+}) {
+  return (
+    <div>
+      <StepIntro
+        title="What are you saving toward?"
+        sub="Keel builds your monthly plan around this. You can update it anytime."
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+        {GOAL_PRESETS.map((name) => {
+          const on = data.goalName === name;
+          return (
+            <button
+              key={name}
+              type="button"
+              onClick={() => set({ goalName: on ? '' : name })}
+              style={{
+                padding: '13px 12px',
+                borderRadius: 14,
+                border: '1.5px solid ' + (on ? 'var(--pine)' : 'var(--hairline)'),
+                background: on ? 'var(--pine-soft)' : 'var(--surface)',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: on ? 'var(--pine)' : 'var(--ink)',
+                textAlign: 'left',
+              }}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+
+      {data.goalName && (
+        <div style={{ marginTop: 4 }}>
+          <ObField label={`Target for ${data.goalName}`}>
+            <ObAmount
+              value={data.goalAmt}
+              onChange={(v) => set({ goalAmt: v })}
+              ccy={data.ccy}
+              placeholder="0 (optional)"
+            />
+          </ObField>
+        </div>
+      )}
+
+      <p style={{ margin: '8px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        No specific goal yet? Leave it blank — Keel will suggest one after your first month.
+      </p>
+    </div>
+  );
+}
+
+// ── Step: Upcoming big payments ────────────────────────────────────────────────
+
+const UPCOMING_SUGGESTIONS = ['School fees', 'Car service', 'Travel', 'Insurance', 'Equipment'];
+
+function UpcomingStep({
+  data,
+  set,
+}: {
+  data: ObData;
+  set: (patch: Partial<ObData>) => void;
+}) {
+  function addRow() {
+    set({ bigPayments: [...data.bigPayments, { name: '', amt: '' }] });
+  }
+
+  function updateRow(i: number, patch: Partial<ObBigPayment>) {
+    set({
+      bigPayments: data.bigPayments.map((r, j) => (j === i ? { ...r, ...patch } : r)),
+    });
+  }
+
+  function removeRow(i: number) {
+    set({ bigPayments: data.bigPayments.filter((_, j) => j !== i) });
+  }
+
+  return (
+    <div>
+      <StepIntro
+        title="Any big payments coming up?"
+        sub="School fees, insurance, travel — costs that hit hard. Keel sets aside a little each month so they don't sting."
+      />
+
+      {data.bigPayments.length === 0 && (
+        <p style={{ margin: '0 2px 16px', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+          Common examples: {UPCOMING_SUGGESTIONS.join(', ')}.
+        </p>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+        {data.bigPayments.map((r, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                value={r.name}
+                onChange={(e) => updateRow(i, { name: e.target.value })}
+                placeholder="What is it?"
+                style={{
+                  width: '100%',
+                  border: 'none',
+                  background: 'var(--surface-2)',
+                  borderRadius: 10,
+                  padding: '10px 13px',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 14,
+                  color: 'var(--ink)',
+                  boxSizing: 'border-box',
+                  marginBottom: 6,
+                }}
+              />
+              <ObAmount
+                value={r.amt}
+                onChange={(v) => updateRow(i, { amt: v })}
+                ccy={data.ccy}
+                placeholder="Amount"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => removeRow(i)}
+              aria-label="Remove"
+              style={{
+                marginTop: 6,
+                width: 30,
+                height: 30,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'var(--surface-2)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                color: 'var(--muted)',
+                fontSize: 16,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={addRow}
+        style={{
+          background: 'var(--pine-soft)',
+          color: 'var(--pine)',
+          border: 'none',
+          borderRadius: 999,
+          padding: '9px 15px',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+          fontFamily: 'var(--font-ui)',
+        }}
+      >
+        + Add a payment
+      </button>
+
+      <p style={{ margin: '12px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        Nothing coming up? Skip — you can add these from your dashboard anytime.
       </p>
     </div>
   );
@@ -860,12 +1061,12 @@ function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
 type StepProps = { data: ObData; set: (patch: Partial<ObData>) => void };
 function ReadyWrapper(props: StepProps) { return <ReadyStep data={props.data} set={props.set} />; }
 
-const OB_STEPS = ['region', 'essentials', 'savings', 'income', 'ready'] as const;
+const OB_STEPS = ['region', 'essentials', 'savings', 'goals', 'upcoming', 'income', 'ready'] as const;
 type StepKey = typeof OB_STEPS[number];
 
 export function OnboardingClient(): React.ReactElement {
   const router = useRouter();
-  const { setProfile } = usePlan();
+  const { setProfile, addBigPayment } = usePlan();
 
   const [stepIdx, setStepIdx] = useState(0);
   const [data, setData] = useState<ObData>(INITIAL_DATA);
@@ -953,15 +1154,31 @@ export function OnboardingClient(): React.ReactElement {
     await signIn('email-password', { email, password, redirect: false });
 
     setProfile(profile);
+    // Register big payments from onboarding
+    for (const bp of data.bigPayments) {
+      const amt = parseInt(bp.amt.replace(/[^0-9]/g, ''), 10);
+      if (bp.name.trim() && amt > 0) {
+        addBigPayment({
+          id: `ob-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          m: 'Soon',
+          pos: 0.5,
+          name: bp.name.trim(),
+          amt,
+          status: 'saving',
+        });
+      }
+    }
     router.push('/paycheck');
   }
 
-  const ctaLabel = isLast ? 'See your paycheck' : stepIdx === 3 ? 'Build my plan' : 'Continue';
+  const ctaLabel = isLast ? 'See your paycheck' : step === 'income' ? 'Build my plan' : 'Continue';
 
   const StepView: React.ComponentType<StepProps> = {
     region: RegionStep,
     essentials: EssentialsStep,
     savings: SavingsStep,
+    goals: GoalsStep,
+    upcoming: UpcomingStep,
     income: SeedIncomeStep,
     ready: ReadyWrapper,
   }[step] as React.ComponentType<StepProps>;

@@ -147,11 +147,14 @@ export function computeRange(monthlyTotals: Record<string, number>): IncomeRange
   if (n < 3) {
     const minVal = values[0];
     const maxVal = values[n - 1];
-    const likely = values[Math.floor(n / 2)];
+    const rawLikely = values[Math.floor(n / 2)];
+    // Single data point: spread over 3-month runway. Two points: 1.5× runway.
+    const stretchFactor = n === 1 ? 3 : 1.5;
+    const likely = rawLikely / stretchFactor;
     return {
-      lean: minVal * 0.7,
+      lean: minVal * 0.7 / stretchFactor,
       likely,
-      strong: maxVal * 1.3,
+      strong: maxVal * 1.3 / stretchFactor,
       provisional: true,
     };
   }
