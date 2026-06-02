@@ -248,7 +248,29 @@ export function ComingClient() {
     setReceived(r => ({ ...r, [id]: true }));
   };
 
-  const expectedItems = allItems.filter(i => !received[i.id]);
+  // Recurring confirmed items (from paycheck-type income set up in onboarding) are
+  // already factored into the paycheck calculation — exclude them from the Expected
+  // and In-plan views to avoid double-counting.
+  const recurringConfirmedAmounts = (() => {
+    const counts: Record<number, number> = {};
+    profile.incomes.forEach((inc) => {
+      if (inc.confidence === 'confirmed') {
+        counts[inc.amount] = (counts[inc.amount] ?? 0) + 1;
+      }
+    });
+    // An amount that appears 3+ times with 'confirmed' confidence is almost certainly
+    // a recurring paycheck entry rather than a one-off confirmed payment.
+    return new Set(
+      Object.entries(counts)
+        .filter(([, cnt]) => cnt >= 3)
+        .map(([amt]) => Number(amt))
+    );
+  })();
+
+  const isRecurringSalary = (it: TimelineItemData) =>
+    it.conf === 'confirmed' && recurringConfirmedAmounts.has(it.amt);
+
+  const expectedItems = allItems.filter(i => !received[i.id] && !isRecurringSalary(i));
   const countedItems = expectedItems.filter(i => counted[i.id]);
   const countedTotal = countedItems.reduce((s, i) => s + aedOf(i), 0);
   const expectedTotal = expectedItems.reduce((s, i) => s + aedOf(i), 0);

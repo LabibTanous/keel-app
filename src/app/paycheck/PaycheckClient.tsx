@@ -312,6 +312,37 @@ export function PaycheckClient() {
               />
             </div>
 
+            {/* Goal savings / big payment rows */}
+            {(plan.monthlyGoalContrib > 0 || plan.monthlyBigPaymentReserve > 0) && (
+              <div className="rise" style={{ animationDelay: '195ms' }}>
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <span className="smallcaps">Spending breakdown</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                    <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {plan.discretionary !== undefined ? 'Discretionary' : 'Spending'}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
+                      AED {(plan.discretionary !== undefined ? plan.discretionary : plan.allocation.spending).toLocaleString()}
+                    </span>
+                  </div>
+                  {plan.monthlyGoalContrib > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--hairline)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Goal savings</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>AED {plan.monthlyGoalContrib.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {plan.monthlyBigPaymentReserve > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid var(--hairline)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Big payments fund</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>AED {plan.monthlyBigPaymentReserve.toLocaleString()}</span>
+                    </div>
+                  )}
+                </Card>
+              </div>
+            )}
+
             {/* Savings card */}
             <div className="rise" style={{ animationDelay: '210ms' }}>
               <Card>

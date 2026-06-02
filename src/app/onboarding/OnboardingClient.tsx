@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { usePlan } from '@/lib/store';
 import { computePlan } from '@/lib/store';
+import type { UserGoal } from '@/lib/store';
 import { groupByMonth, computeRange, computePaycheck, computeAllocation } from '@/lib/engine';
 import type { Profile, IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
@@ -35,6 +36,7 @@ interface IncomeRow {
   amt: string;
   ccy: string;
   recurring: boolean | null;
+  incomeType?: string;
   months?: number;
   dayOfMonth?: number;
   date?: string;
@@ -43,6 +45,14 @@ interface IncomeRow {
 interface ObBigPayment {
   name: string;
   amt: string;
+  dueDate: string;
+}
+
+interface ObGoal {
+  name: string;
+  custom: string;
+  targetAmt: string;
+  targetDate: string;
 }
 
 interface ObData {
@@ -51,13 +61,15 @@ interface ObData {
   ccy: string;
   rent: string;
   bills: string;
-  savings: string;
+  savingsCash: string;
+  savingsInvestments: string;
+  savingsProperty: string;
+  savingsOther: string;
   transport: string;
   subscriptions: string;
   otherExpenses: string;
   incomes: IncomeRow[];
-  goalName: string;
-  goalAmt: string;
+  goals: ObGoal[];
   bigPayments: ObBigPayment[];
   email: string;
   password: string;
@@ -70,15 +82,17 @@ const INITIAL_DATA: ObData = {
   ccy: 'AED',
   rent: '',
   bills: '',
-  savings: '',
+  savingsCash: '',
+  savingsInvestments: '',
+  savingsProperty: '',
+  savingsOther: '',
   transport: '',
   subscriptions: '',
   otherExpenses: '',
   incomes: [
     { amt: '', ccy: 'AED', recurring: null, months: 6, dayOfMonth: 1 },
   ],
-  goalName: '',
-  goalAmt: '',
+  goals: [],
   bigPayments: [],
   email: '',
   password: '',
@@ -366,17 +380,49 @@ function SavingsStep({
   data: ObData;
   set: (patch: Partial<ObData>) => void;
 }) {
+  const total =
+    (parseInt(data.savingsCash.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsInvestments.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsProperty.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsOther.replace(/[^0-9]/g, ''), 10) || 0);
+
   return (
     <div>
       <StepIntro
-        title="What's in your buffer today?"
-        sub="Whatever you've set aside — it's the cushion Keel plans around. A rough number is fine."
+        title="What do you have set aside?"
+        sub="Include cash, investments, or any assets you could draw on. Rough numbers are fine."
       />
-      <ObField label="Savings / buffer">
-        <ObAmount value={data.savings} onChange={(v) => set({ savings: v })} />
+      <ObField label="Cash & bank accounts">
+        <ObAmount value={data.savingsCash} onChange={(v) => set({ savingsCash: v })} ccy={data.ccy} placeholder="0" />
       </ObField>
-      <p style={{ margin: '2px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
-        No buffer yet? Leave it at zero — Keel will help you build one from your first steady months.
+      <ObField label="Investments (stocks, crypto, funds)">
+        <ObAmount value={data.savingsInvestments} onChange={(v) => set({ savingsInvestments: v })} ccy={data.ccy} placeholder="0 (optional)" />
+      </ObField>
+      <ObField label="Property / asset value">
+        <ObAmount value={data.savingsProperty} onChange={(v) => set({ savingsProperty: v })} ccy={data.ccy} placeholder="0 (optional)" />
+      </ObField>
+      <ObField label="Other">
+        <ObAmount value={data.savingsOther} onChange={(v) => set({ savingsOther: v })} ccy={data.ccy} placeholder="0 (optional)" />
+      </ObField>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          background: 'var(--surface)',
+          border: '1px solid var(--hairline)',
+          borderRadius: 14,
+          padding: '14px 16px',
+          marginTop: 4,
+        }}
+      >
+        <span style={{ fontSize: 14, color: 'var(--ink)' }}>Total buffer</span>
+        <span className="serif tnum" style={{ fontSize: 22, color: 'var(--pine)' }}>
+          <Cur n={total} />
+        </span>
+      </div>
+      <p style={{ margin: '8px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        Nothing yet? Leave it all at zero — Keel will help you build a buffer from your first steady months.
       </p>
     </div>
   );
@@ -384,13 +430,15 @@ function SavingsStep({
 
 // ── Step: Goals ────────────────────────────────────────────────────────────────
 
-const GOAL_PRESETS = [
+const GOAL_OPTIONS = [
   'Emergency fund',
   'Home / property',
   'Vacation',
   'Car',
   'Education',
   'New business',
+  'Retirement',
+  'Other',
 ];
 
 function GoalsStep({
@@ -400,54 +448,123 @@ function GoalsStep({
   data: ObData;
   set: (patch: Partial<ObData>) => void;
 }) {
+  function addGoal() {
+    set({ goals: [...data.goals, { name: '', custom: '', targetAmt: '', targetDate: '' }] });
+  }
+
+  function updateGoal(i: number, patch: Partial<ObGoal>) {
+    set({ goals: data.goals.map((g, j) => (j === i ? { ...g, ...patch } : g)) });
+  }
+
+  function removeGoal(i: number) {
+    set({ goals: data.goals.filter((_, j) => j !== i) });
+  }
+
   return (
     <div>
       <StepIntro
         title="What are you saving toward?"
-        sub="Keel builds your monthly plan around this. You can update it anytime."
+        sub="Add as many goals as you like — Keel plans a monthly contribution for each."
       />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-        {GOAL_PRESETS.map((name) => {
-          const on = data.goalName === name;
-          return (
-            <button
-              key={name}
-              type="button"
-              onClick={() => set({ goalName: on ? '' : name })}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
+        {data.goals.map((g, i) => (
+          <div
+            key={i}
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--hairline)',
+              borderRadius: 16,
+              padding: '14px 14px 12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)' }}>Goal {i + 1}</div>
+              <button
+                type="button"
+                onClick={() => removeGoal(i)}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%', border: 'none',
+                  background: 'var(--surface-2)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--muted)', fontSize: 14, lineHeight: 1,
+                }}
+              >×</button>
+            </div>
+
+            {/* Goal name dropdown */}
+            <select
+              value={g.name}
+              onChange={(e) => updateGoal(i, { name: e.target.value, custom: '' })}
               style={{
-                padding: '13px 12px',
-                borderRadius: 14,
-                border: '1.5px solid ' + (on ? 'var(--pine)' : 'var(--hairline)'),
-                background: on ? 'var(--pine-soft)' : 'var(--surface)',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-ui)',
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: on ? 'var(--pine)' : 'var(--ink)',
-                textAlign: 'left',
+                width: '100%', padding: '10px 13px', borderRadius: 10, marginBottom: 8,
+                border: 'none', background: 'var(--surface-2)',
+                fontFamily: 'var(--font-ui)', fontSize: 14, color: g.name ? 'var(--ink)' : 'var(--muted)',
+                cursor: 'pointer', appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat', backgroundPosition: 'right 13px center',
               }}
             >
-              {name}
-            </button>
-          );
-        })}
+              <option value="">What are you saving for?</option>
+              {GOAL_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+
+            {/* Custom label if "Other" */}
+            {g.name === 'Other' && (
+              <input
+                type="text"
+                value={g.custom}
+                onChange={(e) => updateGoal(i, { custom: e.target.value })}
+                placeholder="Describe your goal"
+                style={{
+                  width: '100%', padding: '10px 13px', borderRadius: 10, marginBottom: 8,
+                  border: 'none', background: 'var(--surface-2)',
+                  fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--ink)',
+                  boxSizing: 'border-box',
+                }}
+              />
+            )}
+
+            {/* Target amount */}
+            <ObAmount
+              value={g.targetAmt}
+              onChange={(v) => updateGoal(i, { targetAmt: v })}
+              ccy={data.ccy}
+              placeholder="Target amount (optional)"
+            />
+
+            {/* Target date */}
+            <input
+              type="month"
+              value={g.targetDate}
+              onChange={(e) => updateGoal(i, { targetDate: e.target.value })}
+              style={{
+                width: '100%', marginTop: 8, padding: '10px 13px', borderRadius: 10,
+                border: 'none', background: 'var(--surface-2)',
+                fontFamily: 'var(--font-ui)', fontSize: 14, color: g.targetDate ? 'var(--ink)' : 'var(--muted)',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        ))}
       </div>
 
-      {data.goalName && (
-        <div style={{ marginTop: 4 }}>
-          <ObField label={`Target for ${data.goalName}`}>
-            <ObAmount
-              value={data.goalAmt}
-              onChange={(v) => set({ goalAmt: v })}
-              ccy={data.ccy}
-              placeholder="0 (optional)"
-            />
-          </ObField>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={addGoal}
+        style={{
+          background: 'var(--pine-soft)', color: 'var(--pine)', border: 'none',
+          borderRadius: 999, padding: '9px 15px', fontSize: 13, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'var(--font-ui)',
+        }}
+      >
+        + Add a goal
+      </button>
 
-      <p style={{ margin: '8px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
-        No specific goal yet? Leave it blank — Keel will suggest one after your first month.
+      <p style={{ margin: '12px 2px 0', fontSize: 12.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        No goals yet? Skip — Keel will suggest one after your first full month.
       </p>
     </div>
   );
@@ -465,7 +582,7 @@ function UpcomingStep({
   set: (patch: Partial<ObData>) => void;
 }) {
   function addRow() {
-    set({ bigPayments: [...data.bigPayments, { name: '', amt: '' }] });
+    set({ bigPayments: [...data.bigPayments, { name: '', amt: '', dueDate: '' }] });
   }
 
   function updateRow(i: number, patch: Partial<ObBigPayment>) {
@@ -518,6 +635,18 @@ function UpcomingStep({
                 onChange={(v) => updateRow(i, { amt: v })}
                 ccy={data.ccy}
                 placeholder="Amount"
+              />
+              <input
+                type="month"
+                value={r.dueDate}
+                onChange={(e) => updateRow(i, { dueDate: e.target.value })}
+                style={{
+                  width: '100%', marginTop: 6, padding: '10px 13px', borderRadius: 10,
+                  border: 'none', background: 'var(--surface-2)',
+                  fontFamily: 'var(--font-ui)', fontSize: 13.5,
+                  color: r.dueDate ? 'var(--ink)' : 'var(--muted)',
+                  boxSizing: 'border-box' as const,
+                }}
               />
             </div>
             <button
@@ -644,6 +773,24 @@ function SeedIncomeStep({
             </div>
             {r.recurring === true && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>Income type</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                    {['Salary', 'Retainer', 'Project', 'Bonus'].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => update(i, { incomeType: t })}
+                        style={{
+                          padding: '4px 11px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                          fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 600,
+                          background: r.incomeType === t ? 'var(--pine)' : 'var(--surface-2)',
+                          color: r.incomeType === t ? 'var(--on-pine)' : 'var(--muted)',
+                        }}
+                      >{t}</button>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>How many months?</div>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -833,7 +980,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
     (parseInt(data.transport.replace(/[^0-9]/g, ''), 10) || 0) +
     (parseInt(data.subscriptions.replace(/[^0-9]/g, ''), 10) || 0) +
     (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
-  const bufferBalance = parseInt(data.savings.replace(/[^0-9]/g, ''), 10) || 0;
+  const bufferBalance = computeBufferBalance(data);
 
   const monthly = groupByMonth(incomeItems);
   const range = computeRange(monthly);
@@ -880,6 +1027,28 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
             style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none', boxSizing: 'border-box' }}
           />
         </label>
+
+        {/* Password strength */}
+        {data.password.length > 0 && (() => {
+          const p = data.password;
+          let score = 0;
+          if (p.length >= 8) score++;
+          if (p.length >= 12) score++;
+          if (/[A-Z]/.test(p)) score++;
+          if (/[0-9]/.test(p)) score++;
+          if (/[^A-Za-z0-9]/.test(p)) score++;
+          const level = score <= 1 ? 'Weak' : score <= 3 ? 'Fair' : 'Strong';
+          const color = score <= 1 ? '#C0392B' : score <= 3 ? '#E67E22' : '#27AE60';
+          const pct = Math.min(100, (score / 5) * 100);
+          return (
+            <div style={{ marginTop: -4, marginBottom: 8 }}>
+              <div style={{ height: 4, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                <div style={{ width: pct + '%', height: '100%', background: color, borderRadius: 999, transition: 'width 0.3s, background 0.3s' }} />
+              </div>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color, marginTop: 4 }}>{level}</div>
+            </div>
+          );
+        })()}
 
         {data.authError && (
           <div style={{ fontSize: 13, color: 'var(--clay)', marginTop: -4 }}>{data.authError}</div>
@@ -1021,6 +1190,17 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
   );
 }
 
+// ── Buffer balance helper ─────────────────────────────────────────────────────
+
+function computeBufferBalance(data: ObData): number {
+  return (
+    (parseInt(data.savingsCash.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsInvestments.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsProperty.replace(/[^0-9]/g, ''), 10) || 0) +
+    (parseInt(data.savingsOther.replace(/[^0-9]/g, ''), 10) || 0)
+  );
+}
+
 // ── Income row expansion ──────────────────────────────────────────────────────
 
 function expandIncomeRows(rows: IncomeRow[]): IncomeItem[] {
@@ -1066,7 +1246,7 @@ type StepKey = typeof OB_STEPS[number];
 
 export function OnboardingClient(): React.ReactElement {
   const router = useRouter();
-  const { setProfile, addBigPayment } = usePlan();
+  const { setProfile, addBigPayment, setUserGoals } = usePlan();
 
   const [stepIdx, setStepIdx] = useState(0);
   const [data, setData] = useState<ObData>(INITIAL_DATA);
@@ -1121,7 +1301,7 @@ export function OnboardingClient(): React.ReactElement {
       (parseInt(data.subscriptions.replace(/[^0-9]/g, ''), 10) || 0) +
       (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
 
-    const bufferBalance = parseInt(data.savings.replace(/[^0-9]/g, ''), 10) || 0;
+    const bufferBalance = computeBufferBalance(data);
     const zakatOn = data.regionCode === 'AE' || data.regionCode === 'SA';
     const profile: Profile = {
       region: data.regionCode,
@@ -1154,13 +1334,30 @@ export function OnboardingClient(): React.ReactElement {
     await signIn('email-password', { email, password, redirect: false });
 
     setProfile(profile);
+
+    // Store user goals from onboarding
+    const userGoals: UserGoal[] = data.goals
+      .filter((g) => g.name)
+      .map((g) => ({
+        name: g.name === 'Other' ? g.custom || 'Custom goal' : g.name,
+        custom: g.custom,
+        targetAmt: parseInt(g.targetAmt.replace(/[^0-9]/g, ''), 10) || 0,
+        targetDate: g.targetDate,
+      }));
+    if (userGoals.length > 0) {
+      setUserGoals(userGoals);
+    }
+
     // Register big payments from onboarding
     for (const bp of data.bigPayments) {
       const amt = parseInt(bp.amt.replace(/[^0-9]/g, ''), 10);
       if (bp.name.trim() && amt > 0) {
+        const dueMon = bp.dueDate
+          ? new Date(bp.dueDate + '-01').toLocaleString('en', { month: 'short' })
+          : 'Soon';
         addBigPayment({
           id: `ob-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          m: 'Soon',
+          m: dueMon,
           pos: 0.5,
           name: bp.name.trim(),
           amt,

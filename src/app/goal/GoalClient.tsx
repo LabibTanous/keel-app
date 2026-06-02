@@ -24,8 +24,8 @@ function computeProjectedLabel(saved: number, target: number, monthly: number): 
   return projected.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-function GoalHero({ saved, target, monthly, behind }: {
-  saved: number; target: number; monthly: number; behind: boolean;
+function GoalHero({ saved, target, monthly, behind, goalName }: {
+  saved: number; target: number; monthly: number; behind: boolean; goalName: string;
 }) {
   const pct = Math.min(100, Math.round((saved / target) * 100));
   const projLabel = computeProjectedLabel(saved, target, monthly)
@@ -37,7 +37,7 @@ function GoalHero({ saved, target, monthly, behind }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div className="smallcaps">Your goal</div>
-          <div className="serif" style={{ fontSize: 22, color: 'var(--ink)', marginTop: 3 }}>Three-month runway</div>
+          <div className="serif" style={{ fontSize: 22, color: 'var(--ink)', marginTop: 3 }}>{goalName}</div>
         </div>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -218,7 +218,15 @@ function StatsRow({
 export function GoalClient() {
   const { plan, profile } = usePlan();
 
-  const target = profile.essentials * profile.targetMonths;
+  const { userGoals } = plan;
+  const primaryGoal = userGoals && userGoals.length > 0 ? userGoals[0] : null;
+  const additionalGoals = userGoals && userGoals.length > 1 ? userGoals.slice(1) : [];
+
+  // Use primary goal's target amount if provided, otherwise fall back to essentials * targetMonths
+  const target = primaryGoal && primaryGoal.targetAmt > 0
+    ? primaryGoal.targetAmt
+    : profile.essentials * profile.targetMonths;
+  const goalName = primaryGoal ? primaryGoal.name : 'Three-month runway';
   const saved = profile.bufferBalance;
   const monthly = plan.allocation.buffer;
   const behind = saved < target * 0.5;
@@ -261,7 +269,32 @@ export function GoalClient() {
               target={target}
               monthly={monthly}
               behind={behind}
+              goalName={goalName}
             />
+            {additionalGoals.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div className="smallcaps" style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>Other goals</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {additionalGoals.map((g, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        background: 'var(--surface)', borderRadius: 12,
+                        padding: '10px 13px', border: '1px solid var(--hairline)',
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{g.name}</span>
+                      <span style={{ fontSize: 12.5, color: 'var(--muted)', textAlign: 'right' }}>
+                        {g.targetAmt > 0 && <span>AED {g.targetAmt.toLocaleString()}</span>}
+                        {g.targetAmt > 0 && g.targetDate && <span> · </span>}
+                        {g.targetDate && <span>{g.targetDate}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {tradeoff.monthsToGoal !== null && (
               <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--muted)' }}>
                 Putting <b style={{ color: 'var(--ink)' }}>AED {Math.round(plan.allocation.buffer).toLocaleString('en-US')}/mo</b> toward your runway buffer — full {profile.targetMonths}-month target in about <b style={{ color: 'var(--ink)' }}>{tradeoff.monthsToGoal} month{tradeoff.monthsToGoal !== 1 ? 's' : ''}</b>. That leaves <b style={{ color: 'var(--ink)' }}>AED {Math.round(plan.allocation.spending).toLocaleString('en-US')}/mo</b> to spend freely — comfortable, or want to push the date and spend more now?

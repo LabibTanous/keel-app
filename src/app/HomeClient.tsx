@@ -109,7 +109,7 @@ export function HomeClient(): React.ReactElement {
               const x = GAP + i * (BAR_W + GAP);
               return (
                 <rect key={i} x={x} y={SVG_H - h} width={BAR_W} height={h} rx={6}
-                  fill="var(--pine-soft)"
+                  fill="rgba(31,77,58,0.22)"
                   style={{
                     transformBox: 'fill-box', transformOrigin: 'bottom center',
                     animation: `k-bar 0.5s cubic-bezier(0.22,1,0.36,1) both`,

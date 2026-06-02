@@ -44,8 +44,9 @@ const ASST_SUGGESTIONS = [
 
 // ── Investment ask guard ──────────────────────────────────────────────────────
 
-function isInvestmentAsk(q: string): boolean {
-  return /\b(stock|stocks|shares?|crypto|bitcoin|invest|investing|investment|portfolio|etf|mutual fund|forex|day ?trade|trading)\b/i.test(q);
+// Only refuse specific stock/crypto pick requests, not general investment questions
+function isSpecificInvestmentPick(q: string): boolean {
+  return /\b(should I buy|should i sell|buy bitcoin|buy tesla|buy apple|buy amazon|which stock|which crypto|pick a stock|recommend a stock|recommend a fund|best etf|best crypto)\b/i.test(q);
 }
 
 // ── Build system context from live plan ───────────────────────────────────────
@@ -57,6 +58,9 @@ function buildContext(plan: Plan): string {
   const lines: string[] = [
     "You are Keel’s in-app financial adviser for a freelancer with irregular income.",
     "Coaching stance: reflect what the numbers mean, don’t direct or lecture. Be warm and brief — 2 to 4 sentences. No jargon, no hype, never scolding. All money is in AED.",
+    "You know the user’s full financial profile — reference actual numbers when answering.",
+    "You CAN discuss general investment strategies (broad asset classes, diversification principles, emergency fund sizing, general allocation frameworks) — just not specific stock picks, individual crypto coins, or active trading advice.",
+    "When answering spending or saving questions, factor in the user’s actual goals and upcoming payments.",
     "",
     "The user’s current plan:",
     `- Steady paycheck they pay themselves: AED ${fmt(paycheck)} / month.`,
@@ -87,8 +91,38 @@ function buildContext(plan: Plan): string {
   // Goal / trajectory — so AI can reason across saving and spending in the same answer
   if (plan.goalTarget > 0) {
     const g = plan.goalInfo;
-    const monthsStr = g.monthsToGoal !== null ? `${g.monthsToGoal} months` : 'already at target';
+    const monthsStr = g.monthsToGoal !== null ? `${g.monthsToGoal} months` : "already at target";
     lines.push(`- Runway goal: AED ${fmt(plan.goalTarget)} target. Contributing AED ${fmt(g.requiredMonthly)}/mo — reaches goal in ${monthsStr}. Spending after buffer contribution: AED ${fmt(plan.allocation.spending)}/mo.`);
+  }
+
+  // User goals
+  if (plan.userGoals && plan.userGoals.length > 0) {
+    lines.push(`\nUSER GOALS:`);
+    for (const g of plan.userGoals) {
+      let goalLine = `- ${g.name}`;
+      if (g.targetAmt > 0) goalLine += `: target AED ${g.targetAmt.toLocaleString()}`;
+      if (g.targetDate) goalLine += ` by ${g.targetDate}`;
+      lines.push(goalLine);
+    }
+  }
+
+  // Monthly goal allocations
+  if (plan.monthlyGoalContrib > 0) {
+    lines.push(`- Monthly goal contributions: AED ${fmt(plan.monthlyGoalContrib)}`);
+  }
+  if (plan.monthlyBigPaymentReserve > 0) {
+    lines.push(`- Monthly big payment reserves: AED ${fmt(plan.monthlyBigPaymentReserve)}`);
+  }
+  if (plan.discretionary !== undefined) {
+    lines.push(`- True discretionary spending (after goals/reserves): AED ${fmt(plan.discretionary)}`);
+  }
+
+  // Big payments
+  if (plan.bigPayments && plan.bigPayments.length > 0) {
+    lines.push(`\nUPCOMING BIG PAYMENTS:`);
+    for (const bp of plan.bigPayments) {
+      lines.push(`- ${bp.name}: AED ${bp.amt.toLocaleString()} (${bp.m})`);
+    }
   }
 
   if (range.provisional) {
@@ -98,7 +132,7 @@ function buildContext(plan: Plan): string {
   lines.push("");
   lines.push("When the user asks a cross-cutting question (e.g. \"can I afford X and still hit my goal?\"), reason across the full connected plan — paycheck, runway, spending, goal trajectory, outlook, and any upcoming income — before answering.");
   lines.push("Answer the user’s question using this context. If asked something you can’t know, say so briefly and suggest what would help. Never invent specific numbers beyond what’s given.");
-  lines.push("Hard boundary: you do NOT give specific investment advice (which stocks, crypto, funds to buy) — gently decline and steer back to planning, buffer and steady pay.");
+  lines.push("Hard boundary: you do NOT recommend specific stocks, crypto coins, or active trading strategies. You CAN discuss general investment principles (asset classes, diversification, when to start investing relative to emergency fund size). Gently decline only when asked for specific picks.");
 
   return lines.join("\n");
 }
@@ -158,8 +192,8 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
     setInput('');
     setBusy(true);
 
-    // Designed refusal for investment questions
-    if (isInvestmentAsk(q)) {
+    // Designed refusal only for specific stock/crypto pick requests
+    if (isSpecificInvestmentPick(q)) {
       setTimeout(() => {
         setMsgs(m => [...m, { id: `a-${Date.now()}`, role: 'assistant', content: ASST_REFUSAL }]);
         setBusy(false);
