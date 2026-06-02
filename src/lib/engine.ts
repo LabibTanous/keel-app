@@ -232,9 +232,14 @@ export function computeRangeFromIncomes(
   const sparseActivity = elapsedMonths >= 3 && (activeMonths / elapsedMonths) < 0.6;
 
   if (lumpyPattern || sparseActivity) {
-    // Spread the full period's income across every elapsed month, empties included.
+    // Spread the full period's income across a FULL YEAR (or the observed span if
+    // that's longer), not just the months between first and last payment. A
+    // freelancer paid Feb–Oct still has Nov/Dec/Jan to cover — annualising over the
+    // payment span alone would overstate the monthly figure. 270k over a 9-month
+    // span → 270k / 12 ≈ 22,500/mo, not 270k / 9 ≈ 30,000/mo.
     const total = activeKeys.reduce((s, k) => s + monthly[k], 0);
-    const spreadMonthly = total / elapsedMonths;
+    const divisor = Math.max(12, elapsedMonths);
+    const spreadMonthly = total / divisor;
     return {
       lean: spreadMonthly * 0.7,
       likely: spreadMonthly,
@@ -306,14 +311,16 @@ export function computeAllocation(
   // the number the user sees. CT only sets aside once turnover crosses the CT line.
   let tax = 0;
   if (tax_region) {
+    // CT set-aside: monthly share of the SAME annual estimate the Tax screen shows.
     if (statusOf(tax_region.ctThreshold, taxTurnover) === 'over') {
       tax = Math.round(estimateCorporateTax(taxTurnover, region) / 12);
     }
-    // VAT reserve: when approaching or over VAT registration line, set aside a monthly
-    // buffer (vatRate × paycheck) so the obligation never arrives as a surprise.
-    // This actively reshapes the allocation and lowers free spending — by design.
-    if (statusOf(tax_region.vatThreshold, taxTurnover) !== 'clear') {
-      tax += Math.round(paycheck * tax_region.vatRate);
+    // VAT set-aside: monthly share of the SAME annual VAT figure the Tax screen
+    // shows (turnover × vatRate). Gated to 'over' so it matches the screen, which
+    // only surfaces the VAT estimate once the line is crossed. Both screens now
+    // reconcile: dashboard monthly × 12 == Tax screen annual.
+    if (statusOf(tax_region.vatThreshold, taxTurnover) === 'over') {
+      tax += Math.round((taxTurnover * tax_region.vatRate) / 12);
     }
   }
 

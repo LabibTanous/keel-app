@@ -4,7 +4,7 @@
  * PaycheckClient.tsx — Set your paycheck screen client component.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
 import { money, amt, Card, Cur } from '@/components/keel/ui';
@@ -100,6 +100,13 @@ export function PaycheckClient() {
 
   const today = new Date();
   const [localWage, setLocalWage] = useState(plan.paycheck);
+  // plan.paycheck is 250 on the first render (store starts empty, then hydrates
+  // from localStorage/Convex). useState only seeds once, so sync the slider to the
+  // suggested paycheck until the user drags it — otherwise it sticks at the minimum.
+  const wageTouched = useRef(false);
+  useEffect(() => {
+    if (!wageTouched.current) setLocalWage(plan.paycheck);
+  }, [plan.paycheck]);
   const [displayMonths, setDisplayMonths] = useState(Math.min(6, maxMonths));
 
   const shownHistory = allHistory.slice(-displayMonths);
@@ -242,7 +249,7 @@ export function PaycheckClient() {
                     max={sliderMax}
                     step={250}
                     value={localWage}
-                    onChange={(e) => setLocalWage(+e.target.value)}
+                    onChange={(e) => { wageTouched.current = true; setLocalWage(+e.target.value); }}
                     style={{ position: 'relative', zIndex: 2 }}
                   />
                   {/* Suggested tick */}
@@ -419,14 +426,20 @@ export function PaycheckClient() {
                   const add = Math.max(plan.range.likely - localWage, 0);
                   const projected = profile.bufferBalance + add * 6;
                   const pPct = target > 0 ? Math.min(100, Math.round((projected / target) * 100)) : 0;
-                  const months = add > 0 ? Math.ceil((target - profile.bufferBalance) / add) : null;
+                  // Clamp: if the buffer already covers the target, runway is "already there"
+                  // (never a negative months count).
+                  const remainingToTarget = Math.max(0, target - profile.bufferBalance);
+                  const alreadyThere = remainingToTarget <= 0;
+                  const months = add > 0 ? Math.ceil(remainingToTarget / add) : null;
                   return (
                     <>
                       <div style={{ height: 8, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', marginBottom: 12 }}>
                         <div style={{ width: pPct + '%', height: '100%', background: 'var(--pine)', borderRadius: 999 }} />
                       </div>
                       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: 'var(--muted)' }}>
-                        {add > 0
+                        {alreadyThere
+                          ? <span>You&apos;re <b style={{ color: 'var(--ink)' }}>already at a full {profile.targetMonths}-month runway</b> — your buffer of {money(profile.bufferBalance)} covers it. Anything you save now is extra cushion.</span>
+                          : add > 0
                           ? <span>From <b style={{ color: 'var(--ink)' }}>{money(profile.bufferBalance)}</b> today — a full {profile.targetMonths}-month runway in about <b style={{ color: 'var(--ink)' }}>{months} month{months !== 1 ? 's' : ''}</b>. Pay yourself less to get there sooner.</span>
                           : <span>At this pay there&apos;s <b style={{ color: 'var(--clay)' }}>nothing left to save</b> — your buffer holds at {money(profile.bufferBalance)}. Ease the paycheck down to keep building.</span>
                         }

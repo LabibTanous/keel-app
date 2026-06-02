@@ -241,7 +241,18 @@ export function GoalClient() {
     ? primaryGoal.targetAmt
     : profile.essentials * profile.targetMonths;
   const goalName = primaryGoal ? primaryGoal.name : 'Three-month runway';
-  const saved = profile.bufferBalance;
+  // Per-goal saved: apportion the shared buffer to THIS goal (by its share of all
+  // goal targets), capped at its target — so a 50k buffer against a 15k goal reads
+  // "15,000 of 15,000", not "50,000 of 15,000".
+  let saved: number;
+  if (primaryGoal && primaryGoal.targetAmt > 0) {
+    const totalGoalTarget = userGoals.reduce((s, g) => s + Math.max(0, g.targetAmt), 0);
+    const share = totalGoalTarget > 0 ? primaryGoal.targetAmt / totalGoalTarget : 1;
+    saved = Math.min(target, Math.round(profile.bufferBalance * share));
+  } else {
+    // Runway fallback goal: the buffer IS the runway, but never overshoot the target.
+    saved = Math.min(profile.bufferBalance, target);
+  }
   const monthly = plan.allocation.buffer;
   const behind = saved < target * 0.5;
 

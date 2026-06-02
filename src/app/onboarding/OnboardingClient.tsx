@@ -11,7 +11,7 @@ import { signIn } from 'next-auth/react';
 import { usePlan } from '@/lib/store';
 import { computePlan } from '@/lib/store';
 import type { UserGoal } from '@/lib/store';
-import { groupByMonth, computeRange, computePaycheck, computeAllocation, toAED } from '@/lib/engine';
+import { computeRangeFromIncomes, computePaycheck, computeAllocation, toAED } from '@/lib/engine';
 import type { Profile, IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
 import { Card } from '@/components/keel/ui';
@@ -1248,8 +1248,9 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
     (parseInt(data.otherExpenses.replace(/[^0-9]/g, ''), 10) || 0);
   const bufferBalance = computeBufferBalance(data);
 
-  const monthly = groupByMonth(incomeItems);
-  const range = computeRange(monthly);
+  // Use the SAME lumpy-aware range path as the real reveal so the step-7 preview
+  // and the live paycheck show the same honest number (no inflated preview).
+  const range = computeRangeFromIncomes(incomeItems, data.incomePattern || undefined);
   const suggestedPaycheck =
     incomeItems.length > 0
       ? computePaycheck(range, essentials, bufferBalance)
@@ -1658,20 +1659,28 @@ export function OnboardingClient(): React.ReactElement {
       addBigPayment(bp);
     }
 
-    // Persist goals and big payments to Convex (best-effort, non-blocking)
-    const persistPayload: Record<string, string> = {};
+    // Persist the full picture to Convex now that the session cookie is set.
+    // Include the profile (not just goals/big-payments) so the first sync writes
+    // all blobs — a fresh-session reload then hydrates from Convex, not just
+    // localStorage. Awaited so a failed first sync is surfaced (non-fatal to nav).
+    const persistPayload: Record<string, string> = {
+      profileJson: JSON.stringify(profile),
+    };
     if (userGoals.length > 0) {
       persistPayload.goalsJson = JSON.stringify(userGoals);
     }
     if (bigPaymentItems.length > 0) {
       persistPayload.bigPaymentsJson = JSON.stringify(bigPaymentItems);
     }
-    if (Object.keys(persistPayload).length > 0) {
-      fetch('/api/user', {
+    try {
+      const res = await fetch('/api/user', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(persistPayload),
-      }).catch(() => {}); // Best-effort — don't block navigation on failure
+      });
+      if (!res.ok) console.error('[onboarding] first Convex sync failed:', res.status);
+    } catch (err) {
+      console.error('[onboarding] first Convex sync error:', err);
     }
 
     router.push('/paycheck');
