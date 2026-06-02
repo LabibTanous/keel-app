@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { usePlan } from '@/lib/store';
 import type { IncomeItem } from '@/lib/engine';
-import { Card, Switch, money } from '@/components/keel/ui';
+import { Card, Switch, money, fmtFx, approxAED } from '@/components/keel/ui';
+import { toAED } from '@/lib/engine';
 import { Dock } from '@/components/keel/Dock';
 import { KEEL_OPEN_ADD, KEEL_OPEN_ASSISTANT } from '@/components/keel/GlobalOverlays';
 
@@ -296,8 +297,15 @@ function ReviewStep({ transactions, onDone }: { transactions: ParsedTx[]; onDone
             <div style={{ fontSize: 16.5, fontWeight: 600, color: 'var(--ink)' }}>{tx.description}</div>
             <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{displayDate}</div>
           </div>
-          <div className="serif tnum" style={{ fontSize: 22, color: tx.amount > 0 ? 'var(--mint)' : 'var(--ink)' }}>
-            {tx.amount > 0 ? '+' : '−'}{money(Math.abs(tx.amount))}
+          <div style={{ textAlign: 'right' }}>
+            <div className="serif tnum" style={{ fontSize: 22, color: tx.amount > 0 ? 'var(--mint)' : 'var(--ink)' }}>
+              {tx.amount > 0 ? '+' : '−'}{tx.currency === 'AED' ? money(Math.abs(tx.amount)) : fmtFx(Math.abs(tx.amount), tx.currency)}
+            </div>
+            {tx.currency !== 'AED' && (
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                {approxAED(toAED(Math.abs(tx.amount), tx.currency))}
+              </div>
+            )}
           </div>
         </div>
 
