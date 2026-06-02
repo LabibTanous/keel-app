@@ -6,15 +6,10 @@
  *
  * RULES:
  * - All colors via CSS variables (var(--pine), var(--surface), …) — never hardcode hex.
- * - BIG_PAYMENTS and PAY_STATUS imported from src/lib/demo-seed.ts.
  * - CCY rates, toAED, fmtFx, approxAED re-exported from engine.ts / fx.ts.
  */
 
 import React, { CSSProperties } from 'react';
-
-// ── Re-export BIG_PAYMENTS and PAY_STATUS from the canonical source ───────────
-export { BIG_PAYMENTS } from '@/lib/demo-seed';
-export type { BigPayment } from '@/lib/demo-seed';
 
 export const PAY_STATUS: Record<'set' | 'saving' | 'soon', { label: string; color: string }> = {
   set:    { label: 'Set aside', color: 'var(--mint)' },

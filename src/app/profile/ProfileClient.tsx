@@ -446,11 +446,11 @@ export function ProfileClient() {
           <div className="rise" style={{ animationDelay: '240ms' }}>
             <Group header="Data">
               <Row
-                label="Reset to demo"
+                label="Reset all data"
                 onClick={() => openSheet({
-                  title: 'Reset to demo data?',
-                  info: 'This will replace all your income history and settings with the demo data.',
-                  confirm: 'Reset to demo',
+                  title: 'Reset all data?',
+                  info: 'This will clear all your income history and settings.',
+                  confirm: 'Reset all data',
                   onConfirm: () => reset(),
                 })}
                 last

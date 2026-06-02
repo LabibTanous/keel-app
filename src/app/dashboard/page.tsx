@@ -339,9 +339,40 @@ function HomeForward() {
   const isLastWeek = dayOfMonth >= 24;
   const hasLoggedExpenses = plan.thisMonthExpenses > 0;
   const showPulse = isLastWeek && !hasLoggedExpenses;
+  const isEmpty = profile.incomes.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Empty-state CTA — shown when no income data has been added yet */}
+      {isEmpty && (
+        <Link href="/import" className="rise" style={{
+          ...D(0),
+          display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none',
+          background: 'var(--pine-soft)', borderRadius: 'var(--r-card)',
+          padding: '18px var(--pad)', border: '1px solid var(--hairline)',
+          boxShadow: 'var(--shadow-sm)',
+        }}>
+          <span style={{
+            width: 42, height: 42, borderRadius: 12, background: 'var(--pine)',
+            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
+              Add income to see your paycheck
+            </span>
+            <span style={{ display: 'block', fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>
+              Import a statement or log an invoice to get started.
+            </span>
+          </span>
+          <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+            <path d="M1 1l6 6-6 6" stroke="var(--pine)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
+          </svg>
+        </Link>
+      )}
       {/* Hero paycheck */}
       <div className="rise" style={{
         ...D(0),

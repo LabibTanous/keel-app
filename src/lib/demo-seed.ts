@@ -24,6 +24,17 @@ export const DEMO_PROFILE: Profile = {
   ],
 };
 
+export const EMPTY_PROFILE: Profile = {
+  region: 'AE',
+  currency: 'AED',
+  essentials: 0,
+  bufferBalance: 0,
+  targetMonths: 3,
+  zakatOn: false,
+  zakatableWealth: 0,
+  incomes: [],
+};
+
 /** Static upcoming big payments for Goal / Coming screens. */
 export interface BigPayment {
   id: string;

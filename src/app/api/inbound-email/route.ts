@@ -16,12 +16,8 @@ export async function POST(req: NextRequest) {
     const textBody = payload.TextBody || payload.text || '';
     const attachments = payload.Attachments || payload.attachments || [];
 
-    // Log for now — future: parse PDF attachments and extract transactions
-    console.log('[inbound-email] received from:', from, 'subject:', subject);
-    console.log('[inbound-email] attachments:', attachments.length);
-
     // Suppress unused variable warnings — retained for future implementation
-    void textBody;
+    void from; void subject; void textBody; void attachments;
 
     // TODO:
     // 1. Verify the email is from a trusted Keel user (match From to a Convex user)

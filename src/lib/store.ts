@@ -4,11 +4,6 @@
  * store.ts — Keel's single source of truth.
  * React Context + localStorage persistence.
  * Pure derivation: every Profile change triggers a full engine recompute.
- *
- * TODO(data-loss): plan persists only in localStorage; clearing the browser wipes it.
- * Wire to the Supabase keel_users row tied to the anonymous session so it survives.
- * /api/user PATCH exists but requires session.user.id — needs an auth/anonymous-session
- * flow before best-effort server save can be wired here.
  */
 
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
@@ -28,7 +23,7 @@ import {
 } from './engine';
 
 export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
-import { DEMO_PROFILE } from './demo-seed';
+import { DEMO_PROFILE, EMPTY_PROFILE } from './demo-seed';
 import type { BigPayment } from './demo-seed';
 
 export type { Profile, IncomeItem };
@@ -246,7 +241,7 @@ function reducer(state: State, action: Action): State {
     case 'ADD_EXPENSE':
       return { ...state, expenses: [...state.expenses, action.payload] };
     case 'RESET':
-      return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+      return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
     default:
       return state;
   }
@@ -256,7 +251,7 @@ const STORAGE_KEY = 'keel_plan_state_v1';
 
 function loadState(): State {
   if (typeof window === 'undefined') {
-    return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+    return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -275,7 +270,7 @@ function loadState(): State {
   } catch {
     // Ignore parse errors — fall through to defaults
   }
-  return { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+  return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
 }
 
 function saveState(state: State): void {
@@ -292,9 +287,9 @@ function saveState(state: State): void {
 const PlanContext = createContext<PlanStore | null>(null);
 
 export function PlanProvider({ children }: { children: React.ReactNode }) {
-  // Always start with DEMO_PROFILE so SSR and first client render match.
+  // Always start with EMPTY_PROFILE so SSR and first client render match.
   // After mount, hydrate from localStorage to avoid React hydration mismatch.
-  const [state, dispatch] = useReducer(reducer, { profile: DEMO_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] });
+  const [state, dispatch] = useReducer(reducer, { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] });
 
   // On first client mount, load persisted state (runs only in the browser)
   useEffect(() => {
