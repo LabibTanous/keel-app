@@ -15,6 +15,14 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
+  manifest: '/manifest.json',
+  themeColor: '#1F4D3A',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Keel',
   },
 }
 

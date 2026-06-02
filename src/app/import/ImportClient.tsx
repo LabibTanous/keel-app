@@ -89,6 +89,18 @@ function ChooseStep({ go }: { go: (s: Step) => void }) {
       </p>
       {opt('upload', 'Upload bank statements', "Drop a statement from your bank app — Keel reads the transactions and sorts them for you. Add as many months as you like.", true)}
       {opt('manual', 'Enter it manually', "Walk through your income, fixed costs and subscriptions in a simple list.")}
+      <div style={{
+        background: 'var(--surface)', border: '1px solid var(--hairline)',
+        borderRadius: 'var(--r-card)', padding: '18px', opacity: 0.7,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+          <div className="serif" style={{ fontSize: 19, color: 'var(--ink)' }}>Forward bank statements</div>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--on-pine)', background: 'var(--pine)', padding: '2px 8px', borderRadius: 999 }}>Soon</span>
+        </div>
+        <div style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.45 }}>
+          Forward any bank statement email to <strong>statements@keel.app</strong> — we&apos;ll read it automatically.
+        </div>
+      </div>
     </div>
   );
 }

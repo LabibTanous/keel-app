@@ -334,6 +334,12 @@ function HomeForward() {
   const { plan, profile } = usePlan();
   const { paycheck, allocation, trackedThisMonth } = plan;
 
+  const today = new Date();
+  const dayOfMonth = today.getDate();
+  const isLastWeek = dayOfMonth >= 24;
+  const hasLoggedExpenses = plan.thisMonthExpenses > 0;
+  const showPulse = isLastWeek && !hasLoggedExpenses;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Hero paycheck */}
@@ -377,6 +383,31 @@ function HomeForward() {
         </div>
       )}
 
+      {/* Month-end pulse check */}
+      {showPulse && (
+        <div className="rise" style={{ ...D(1.5), background: 'var(--gold-soft)', border: '1px solid var(--gold)', borderRadius: 'var(--r-card)', padding: '14px var(--pad)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+              <rect x="3" y="4" width="18" height="18" rx="2" stroke="var(--gold)" strokeWidth="1.8"/>
+              <path d="M16 2v4M8 2v4M3 10h18" stroke="var(--gold)" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 3 }}>Month-end check</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 10 }}>
+                You haven&apos;t logged any expenses this month — 60 seconds keeps your plan accurate.
+              </div>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
+                style={{ background: 'var(--gold)', color: '#fff', border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+              >
+                Log expenses
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Where it goes — compact allocation */}
       <div className="rise" style={D(2)}>
         <Card>
@@ -412,9 +443,9 @@ function HomeForward() {
         }}>
           <div className="smallcaps" style={{ fontSize: 10, marginBottom: 6 }}>Left to spend</div>
           <div className="serif tnum" style={{ fontSize: 22, color: 'var(--pine)' }}>
-            {`AED ${Math.round(plan.discretionary).toLocaleString()}`}
+            {`AED ${Math.max(0, Math.round(plan.discretionary - plan.thisMonthExpenses)).toLocaleString()}`}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>discretionary</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>after expenses</div>
         </div>
       </div>
 

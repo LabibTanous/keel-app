@@ -358,6 +358,7 @@ function EssentialsStep({
       <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Due on the</span>
       <input
         type="number" min={1} max={31}
+        aria-label="Day of month"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{
@@ -395,13 +396,14 @@ function EssentialsStep({
         <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 8 }}>Subscriptions</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {data.subscriptionsList.map((r, i) => (
-            <div key={i} style={{
+            <div key={r.name + '-' + i} style={{
               background: 'var(--surface)', border: '1px solid var(--hairline)',
               borderRadius: 14, padding: '12px 13px',
             }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <input
                   type="text"
+                  aria-label="Subscription name"
                   value={r.name}
                   onChange={(e) => updateSub(i, { name: e.target.value })}
                   placeholder="e.g. Netflix, Spotify…"
@@ -552,7 +554,7 @@ function GoalsStep({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
         {data.goals.map((g, i) => (
           <div
-            key={i}
+            key={g.name + '-' + i}
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--hairline)',
@@ -597,6 +599,7 @@ function GoalsStep({
             {g.name === 'Other' && (
               <input
                 type="text"
+                aria-label="Custom goal name"
                 value={g.custom}
                 onChange={(e) => updateGoal(i, { custom: e.target.value })}
                 placeholder="Describe your goal"
@@ -620,6 +623,7 @@ function GoalsStep({
             {/* Target date */}
             <input
               type="month"
+              aria-label="Target date"
               value={g.targetDate}
               onChange={(e) => updateGoal(i, { targetDate: e.target.value })}
               style={{
@@ -692,10 +696,11 @@ function UpcomingStep({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
         {data.bigPayments.map((r, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <div key={r.name + '-' + i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <input
                 type="text"
+                aria-label="Payment name"
                 value={r.name}
                 onChange={(e) => updateRow(i, { name: e.target.value })}
                 placeholder="What is it?"
@@ -720,6 +725,7 @@ function UpcomingStep({
               />
               <input
                 type="month"
+                aria-label="Due date"
                 value={r.dueDate}
                 onChange={(e) => updateRow(i, { dueDate: e.target.value })}
                 style={{
@@ -899,11 +905,12 @@ function SeedIncomeStep({
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Paid on the...</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Paid on the…</div>
                   <input
                     type="number"
                     min={1}
                     max={31}
+                    aria-label="Day of month"
                     value={r.dayOfMonth ?? 1}
                     placeholder="1"
                     onChange={(e) => update(i, { dayOfMonth: parseInt(e.target.value, 10) || 1 })}
@@ -927,6 +934,7 @@ function SeedIncomeStep({
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 5 }}>When did you receive it?</div>
                 <input
                   type="date"
+                  aria-label="Date received"
                   value={r.date ?? ''}
                   onChange={(e) => update(i, { date: e.target.value })}
                   style={{
@@ -1093,7 +1101,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
             value={data.email}
             onChange={(e) => set({ email: e.target.value, authError: '' })}
             placeholder="you@example.com"
-            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, boxSizing: 'border-box' }}
           />
         </label>
 
@@ -1106,7 +1114,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
             value={data.password}
             onChange={(e) => set({ password: e.target.value, authError: '' })}
             placeholder="6+ characters"
-            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'var(--font-ui)', fontSize: 16, boxSizing: 'border-box' }}
           />
         </label>
 

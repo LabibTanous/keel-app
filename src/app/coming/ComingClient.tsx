@@ -221,7 +221,7 @@ function Approx({ on }: { on: boolean }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export function ComingClient() {
-  const { profile, plan, addIncome } = usePlan();
+  const { profile, plan, addIncome, setTracked } = usePlan();
   const [view, setView] = useState('expected');
 
   // Build timeline items from profile incomes
@@ -246,8 +246,15 @@ export function ComingClient() {
 
   const aedOf = (it: TimelineItemData) => toAED(it.amt, it.ccy);
 
-  // Toggle "Count it" — local view only (plan reads current-month incomes automatically)
-  const toggle = (id: string) => setCounted(c => ({ ...c, [id]: !c[id] }));
+  // Toggle "Count it" — updates global plan store so home/paycheck/goals all reflect the change
+  const toggle = (id: string) => {
+    const newCounted = { ...counted, [id]: !counted[id] };
+    setCounted(newCounted);
+    const newTotal = allItems
+      .filter(i => !received[i.id] && newCounted[i.id])
+      .reduce((s, i) => s + toAED(i.amt, i.ccy), 0);
+    setTracked(newTotal);
+  };
 
   // "Mark as received" — adds income to the store with today's date + confirmed confidence.
   const markReceived = (id: string) => {

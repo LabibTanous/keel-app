@@ -98,6 +98,7 @@ export function PaycheckClient() {
   const maxMonths = Math.min(allHistory.length, 12) || 6;
   const domainMax = Math.max(...allHistory.map((d) => d.v), plan.range.strong) * 1.1;
 
+  const today = new Date();
   const [localWage, setLocalWage] = useState(plan.paycheck);
   const [displayMonths, setDisplayMonths] = useState(Math.min(6, maxMonths));
 
@@ -315,7 +316,7 @@ export function PaycheckClient() {
             {/* Your savings plan — shown when goals or big payments exist */}
             {(plan.monthlyGoalContrib > 0 || plan.monthlyBigPaymentReserve > 0) && (
               <div className="rise" style={{ animationDelay: '195ms' }}>
-                <Card style={{ background: 'var(--pine-soft)', borderLeft: '3px solid var(--pine)' }}>
+                <Card style={{ background: 'var(--pine-soft)', boxShadow: 'inset 3px 0 0 var(--pine)' }}>
                   <div className="smallcaps" style={{ color: 'var(--pine)', marginBottom: 12 }}>
                     Your savings plan this month
                   </div>
@@ -325,13 +326,13 @@ export function PaycheckClient() {
                     .filter((g) => g.targetAmt > 0 && g.targetDate)
                     .map((g, i) => {
                       const [y, m] = g.targetDate.split('-').map(Number);
-                      const targetMs = new Date(y, m - 1, 1).getTime() - new Date().getTime();
+                      const targetMs = new Date(y, m - 1, 1).getTime() - today.getTime();
                       const monthsLeft = Math.max(1, Math.round(targetMs / (1000 * 60 * 60 * 24 * 30.44)));
                       const monthly = Math.round(g.targetAmt / monthsLeft);
                       const targetDateStr = new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
                       return (
                         <div
-                          key={i}
+                          key={g.name + '-' + i}
                           style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                             padding: '8px 0', borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',

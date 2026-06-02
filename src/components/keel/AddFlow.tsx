@@ -9,8 +9,9 @@
  * On confirm for income/received types: calls store.addIncome and closes.
  */
 
-import React, { useState, useRef, CSSProperties } from 'react';
+import React, { useState, useRef, CSSProperties, useCallback } from 'react';
 import { usePlan } from '@/lib/store';
+import type { ExpenseItem } from '@/lib/store';
 import { toAED } from '@/lib/engine';
 import type { IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
@@ -144,7 +145,7 @@ interface AddFormProps {
 }
 
 function AddForm({ type, onDone }: AddFormProps) {
-  const { addIncome, addBigPayment } = usePlan();
+  const { addIncome, addBigPayment, addExpense } = usePlan();
   const cfg = FORM_CONFIGS[type];
 
   const defaultSeg =
@@ -160,6 +161,49 @@ function AddForm({ type, onDone }: AddFormProps) {
   const [date, setDate] = useState(today);
   const [paymentName, setPaymentName] = useState('');
   const [paymentDue, setPaymentDue] = useState(today);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+
+  const handleReceiptScan = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanLoading(true);
+    setScanError('');
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(',')[1];
+          const res = await fetch('/api/scan-receipt', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            setScanError("Couldn't read receipt — enter manually.");
+          } else {
+            if (data.amount) setAmount(String(data.amount));
+            if (data.merchant) setSource(data.merchant);
+            if (data.date) setDate(data.date);
+            if (data.currency) setCcy(data.currency);
+          }
+        } catch {
+          setScanError("Scan failed — enter manually.");
+        } finally {
+          setScanLoading(false);
+        }
+      };
+      reader.onerror = () => {
+        setScanError("Scan failed — enter manually.");
+        setScanLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setScanError("Scan failed — enter manually.");
+      setScanLoading(false);
+    }
+  }, []);
 
   const amtNum = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
 
@@ -174,6 +218,18 @@ function AddForm({ type, onDone }: AddFormProps) {
           confidence: type === 'received' ? 'confirmed' : toEngineConfidence(seg),
         };
         addIncome(item);
+      }
+    }
+    // For expense: wire into store
+    if (type === 'expense') {
+      if (amtNum > 0) {
+        const item: ExpenseItem = {
+          amount: amtNum,
+          currency: ccy,
+          date: date || today,
+          category: source || undefined,
+        };
+        addExpense(item);
       }
     }
     // For big payment: wire into store
@@ -200,7 +256,62 @@ function AddForm({ type, onDone }: AddFormProps) {
 
   return (
     <div>
+      {type === 'expense' && (
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            background: 'var(--surface-2)', borderRadius: 12, padding: '10px 14px',
+            fontSize: 13.5, color: 'var(--muted)', fontWeight: 600 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.8"/>
+            </svg>
+            {scanLoading ? 'Scanning…' : 'Scan a receipt'}
+            <input type="file" accept="image/*" capture="environment"
+              style={{ display: 'none' }}
+              onChange={handleReceiptScan}
+            />
+          </label>
+          {scanError && <div style={{ fontSize: 12, color: 'var(--clay)', marginTop: 4 }}>{scanError}</div>}
+        </div>
+      )}
       {cfg.fields.map(([l, ph]) => {
+        // Expense-specific fields
+        if (type === 'expense' && l === 'What for') {
+          return (
+            <Field key={l} label={l}>
+              <TextInput
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder={ph}
+              />
+            </Field>
+          );
+        }
+        if (type === 'expense' && l === 'Amount') {
+          return (
+            <Field key={l} label={l}>
+              <TextInput
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                inputMode="numeric"
+                placeholder={ph}
+              />
+            </Field>
+          );
+        }
+        if (type === 'expense' && l === 'Date') {
+          return (
+            <Field key={l} label={l}>
+              <input
+                aria-label="Expense date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+          );
+        }
         // Income/received amounts: show currency picker + live AED conversion
         if ((type === 'income' || type === 'received') && l === 'Amount') {
           return (

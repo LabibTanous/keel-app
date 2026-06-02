@@ -12,6 +12,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { Plan } from '@/lib/store';
+import { usePlan } from '@/lib/store';
 import { IconSpark } from '@/components/keel/icons';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -158,6 +159,7 @@ function staticFallback(question: string, plan: Plan): string {
 // ── Assistant component ───────────────────────────────────────────────────────
 
 export function Assistant({ open, onClose, plan }: AssistantProps) {
+  const { addIncome, addExpense } = usePlan();
   const [msgs, setMsgs] = useState<Message[]>([
     { id: 'init', role: 'assistant', content: INITIAL_MESSAGE },
   ]);
@@ -210,6 +212,17 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
       if (res.ok) {
         const data = await res.json();
         const reply = (data.reply || "").trim();
+        if (data.action) {
+          const a = data.action;
+          const today = new Date().toISOString().slice(0, 10);
+          if (a.type === 'expense') {
+            addExpense({ amount: a.amount, currency: a.currency || 'AED', date: a.date || today, category: a.category });
+          } else if (a.type === 'income_received') {
+            addIncome({ amount: a.amount, currency: a.currency || 'AED', date: a.date || today, confidence: 'confirmed' });
+          } else if (a.type === 'income_expected') {
+            addIncome({ amount: a.amount, currency: a.currency || 'AED', date: a.date || today, confidence: 'likely' });
+          }
+        }
         setMsgs(m => [...m, { id: `a-${Date.now()}`, role: "assistant", content: reply || staticFallback(q, plan) }]);
       } else {
         setMsgs(m => [...m, { id: `a-${Date.now()}`, role: "assistant", content: staticFallback(q, plan) }]);

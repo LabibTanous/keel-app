@@ -339,6 +339,7 @@ export function GoalClient() {
                   {editGoal.name === 'Other' && (
                     <input
                       type="text"
+                      aria-label="Custom goal name"
                       value={editGoal.custom}
                       onChange={(e) => setEditGoal({ ...editGoal, custom: e.target.value })}
                       placeholder="Describe your goal"
@@ -380,6 +381,7 @@ export function GoalClient() {
                   <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>Target date</div>
                   <input
                     type="month"
+                    aria-label="Target date"
                     value={editGoal.targetDate}
                     onChange={(e) => setEditGoal({ ...editGoal, targetDate: e.target.value })}
                     style={{
@@ -432,7 +434,7 @@ export function GoalClient() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {additionalGoals.map((g, i) => (
                     <div
-                      key={i}
+                      key={g.name + '-' + i}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         background: 'var(--surface)', borderRadius: 12,

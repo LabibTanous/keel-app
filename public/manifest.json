@@ -1,0 +1,32 @@
+{
+  "name": "Keel",
+  "short_name": "Keel",
+  "description": "Financial stability for irregular income",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F1E6",
+  "theme_color": "#1F4D3A",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log expense",
+      "short_name": "Expense",
+      "description": "Quickly log an expense",
+      "url": "/quick-log?type=expense",
+      "icons": [{ "src": "/favicon.ico", "sizes": "any" }]
+    },
+    {
+      "name": "Log income",
+      "short_name": "Income",
+      "description": "Log money received",
+      "url": "/quick-log?type=income",
+      "icons": [{ "src": "/favicon.ico", "sizes": "any" }]
+    }
+  ]
+}

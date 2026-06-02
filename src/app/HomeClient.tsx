@@ -108,7 +108,7 @@ export function HomeClient(): React.ReactElement {
             {BARS.map((h, i) => {
               const x = GAP + i * (BAR_W + GAP);
               return (
-                <rect key={i} x={x} y={SVG_H - h} width={BAR_W} height={h} rx={6}
+                <rect key={`bar-${i}`} x={x} y={SVG_H - h} width={BAR_W} height={h} rx={6}
                   fill="rgba(31,77,58,0.22)"
                   style={{
                     transformBox: 'fill-box', transformOrigin: 'bottom center',
@@ -179,9 +179,9 @@ export function HomeClient(): React.ReactElement {
           {/* Dot indicators + step counter */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
             <div style={{ display: 'flex', gap: 6 }}>
-              {STEPS.map((_, i) => (
+              {STEPS.map((s, i) => (
                 <button
-                  key={i}
+                  key={s.title}
                   type="button"
                   aria-label={`Step ${i + 1}`}
                   onClick={() => goStep(i)}
