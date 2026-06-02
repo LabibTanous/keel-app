@@ -4,9 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
 import {
-  TAX_REGIONS, regionHasTax, estimateAnnualTax, statusOf, fromAED, FX_AS_OF,
+  TAX_REGIONS, estimateAnnualTax, statusOf,
   ASSUMED_PROFIT_MARGIN, UAE_CT_REGISTRATION_TURNOVER, UAE_CT_FREE_THRESHOLD,
-  EGYPT_EXEMPTION_EGP, JORDAN_EXEMPTION_JOD,
 } from '@/lib/engine';
 import { Card, Disclaimer } from '@/components/keel/ui';
 import { IconCalendar } from '@/components/keel/icons';
@@ -61,7 +60,7 @@ function CorporateTaxCard({ turnover }: { turnover: number }) {
     : st === 'near'
       ? 'Approaching the AED 1M turnover line where Corporate Tax starts to apply.'
       : "Doesn't apply yet — you're under the AED 1M turnover line for sole freelancers.";
-  const annual = estimateAnnualTax(turnover, 'AE');
+  const annual = estimateAnnualTax(turnover, { taxMode: 'uae_ct' });
   return (
     <Card style={{ opacity: st === 'clear' ? 0.92 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
@@ -86,58 +85,48 @@ function CorporateTaxCard({ turnover }: { turnover: number }) {
   );
 }
 
-// ── Progressive income tax card (Egypt / Jordan) ─────────────────────────────
+// ── Flat-rate income tax card ────────────────────────────────────────────────
 
-function ProgressiveTaxCard({ region, turnover }: { region: string; turnover: number }) {
-  const r = TAX_REGIONS[region];
-  const ccy = r.currency;
-  const exemption = region === 'EG' ? EGYPT_EXEMPTION_EGP : JORDAN_EXEMPTION_JOD;
-  const localIncome = fromAED(turnover, ccy);
-  const annualAED = estimateAnnualTax(turnover, region);
-  const monthlyAED = Math.round(annualAED / 12);
-  const aboveExemption = localIncome > exemption;
+function FlatTaxCard({ turnover, rate, locationLabel }: { turnover: number; rate: number; locationLabel?: string }) {
+  const annual = estimateAnnualTax(turnover, { taxMode: 'flat', taxFlatRate: rate });
+  const monthly = Math.round(annual / 12);
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Personal income tax</div>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>progressive · {r.label}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>Income tax set-aside</div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+            {rate}% flat{locationLabel ? ` · ${locationLabel}` : ''}
+          </div>
         </div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: aboveExemption ? 'var(--gold)' : 'var(--muted)', background: 'var(--surface-2)', padding: '5px 11px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: aboveExemption ? 'var(--gold)' : 'var(--muted)' }} />
-          {aboveExemption ? 'Set aside' : 'Below exemption'}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--gold)', background: 'var(--surface-2)', padding: '5px 11px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--gold)' }} />Set aside
         </span>
       </div>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
-        {aboveExemption
-          ? `Your income is above the ${cur(exemption, ccy)} personal exemption, so progressive income tax applies on the rest. Keel sets a little aside each month so filing season isn't a shock.`
-          : `Your tracked income is under the ${cur(exemption, ccy)} personal exemption — nothing due yet.`}
+        You told us you pay tax at {rate}%. Keel sets a little aside each month so filing season isn&apos;t a shock.
       </p>
-      {aboveExemption && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
-          <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>
-            {approxAED(annualAED)} a year ({approxAED(monthlyAED)}/month), on roughly {cur(localIncome, ccy)} of net professional income.
-          </div>
-          <Disclaimer style={{ marginTop: 9 }}>
-            Estimated on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice. Brackets &amp; FX are static ({r.label} 2025, rates as of {FX_AS_OF}).
-          </Disclaimer>
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
+        <div style={{ fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5 }}>
+          {approxAED(annual)} a year ({approxAED(monthly)}/month), at {rate}% of your tracked income.
         </div>
-      )}
+        <Disclaimer style={{ marginTop: 9 }}>Based on the rate you set — an estimate, not tax advice.</Disclaimer>
+      </div>
     </Card>
   );
 }
 
-// ── No-tax calm state (GCC except UAE) ───────────────────────────────────────
+// ── No-tax calm state ─────────────────────────────────────────────────────────
 
-function NoTaxCard({ label }: { label: string }) {
+function NoTaxCard() {
   return (
     <Card style={{ textAlign: 'center', padding: '34px 22px' }}>
       <span style={{ width: 52, height: 52, borderRadius: 16, background: 'var(--pine-soft)', color: 'var(--pine)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
         <IconCalendar size={26} />
       </span>
-      <div className="serif" style={{ fontSize: 20, color: 'var(--ink)', marginBottom: 6 }}>No personal income tax in {label}</div>
-      <p style={{ margin: '0 auto', maxWidth: 260, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
-        Freelancers in {label} pay no personal income tax. Keel keeps watching — if that ever changes, it&apos;ll surface here, early and calmly.
+      <div className="serif" style={{ fontSize: 20, color: 'var(--ink)', marginBottom: 6 }}>No tax set aside</div>
+      <p style={{ margin: '0 auto', maxWidth: 270, fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>
+        You told us you don&apos;t pay income tax here, so Keel leaves it out of your plan. You can turn this on anytime in your profile.
       </p>
     </Card>
   );
@@ -187,8 +176,7 @@ export function TaxClient() {
   const label = taxRegion?.label ?? region;
   const flag = REGION_FLAG[region] ?? '';
 
-  const kind = taxRegion?.kind ?? 'none';
-  const hasTax = regionHasTax(region);
+  const taxMode = profile.taxMode ?? 'none';
   // Zakat is offered in GCC (AE/SA/QA/KW) — a religious obligation, independent of income tax.
   const gcc = region === 'AE' || region === 'SA' || region === 'QA' || region === 'KW';
   const showZakat = zakatOn && gcc && zakatableWealth > 0;
@@ -213,7 +201,7 @@ export function TaxClient() {
         </div>
         <div style={{ padding: '0 18px 6px', marginTop: -2 }}>
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--muted)' }}>
-            What applies to you in {label}, and when — Keel watches the lines so you don&apos;t have to.
+            What you told us applies to you in {label} — Keel watches the lines so you don&apos;t have to.
           </p>
         </div>
       </div>
@@ -229,19 +217,19 @@ export function TaxClient() {
             </div>
           )}
 
-          {kind === 'uae_ct' && (
+          {taxMode === 'uae_ct' && (
             <>
               <div className="rise"><TurnoverCard turnover={turnover} limit={UAE_CT_REGISTRATION_TURNOVER} name="Corporate Tax" /></div>
               <div className="rise" style={{ animationDelay: '60ms' }}><CorporateTaxCard turnover={turnover} /></div>
             </>
           )}
 
-          {kind === 'progressive' && (
-            <div className="rise"><ProgressiveTaxCard region={region} turnover={turnover} /></div>
+          {taxMode === 'flat' && (
+            <div className="rise"><FlatTaxCard turnover={turnover} rate={profile.taxFlatRate ?? 0} locationLabel={profile.taxLocationLabel} /></div>
           )}
 
-          {kind === 'none' && (
-            <div className="rise" style={{ paddingTop: 6 }}><NoTaxCard label={label} /></div>
+          {taxMode === 'none' && (
+            <div className="rise" style={{ paddingTop: 6 }}><NoTaxCard /></div>
           )}
 
           {showZakat && (
@@ -251,9 +239,9 @@ export function TaxClient() {
           )}
 
           <p className="rise" style={{ animationDelay: '160ms', margin: '2px 8px 0', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', textAlign: 'center' }}>
-            {hasTax
-              ? 'Keel surfaces a line only when it applies to you — so this stays quiet until it matters.'
-              : 'Nothing to file here right now. Keel will surface it early if that changes.'}
+            {taxMode === 'none'
+              ? 'Nothing to file here right now. You can turn tax on anytime in your profile.'
+              : 'Keel surfaces a line only when it applies to you — so this stays quiet until it matters.'}
           </p>
         </div>
       </div>

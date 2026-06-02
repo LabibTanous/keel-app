@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlan } from '@/lib/store';
 import { toAED } from '@/lib/engine';
 import { PAY_STATUS, Card, Disclaimer, Segmented, money, fmtFx, approxAED, Cur } from '@/components/keel/ui';
@@ -226,11 +226,20 @@ export function ComingClient() {
 
   // Build timeline items from profile incomes
   const allItems: TimelineItemData[] = profile.incomes.map((inc, i) => incomeToTimeline(inc, i));
+  // Persisted across page leaves (localStorage) so the Count-it / Received toggles stick.
+  const COUNTED_KEY = 'keel_coming_counted';
+  const RECEIVED_KEY = 'keel_coming_received';
+  function loadMap(key: string): Record<string, boolean> | null {
+    if (typeof window === 'undefined') return null;
+    try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) as Record<string, boolean> : null; }
+    catch { return null; }
+  }
+
   const [counted, setCounted] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     // Default "Count it" to ON for confirmed items, OFF for others
     profile.incomes.forEach((inc, i) => { init[`inc-${i}`] = inc.confidence === 'confirmed'; });
-    return init;
+    return { ...init, ...(loadMap(COUNTED_KEY) ?? {}) };
   });
   // Pre-populate received state: confirmed items from current or past months are already received
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -241,8 +250,16 @@ export function ComingClient() {
         init[`inc-${i}`] = true;
       }
     });
-    return init;
+    return { ...init, ...(loadMap(RECEIVED_KEY) ?? {}) };
   });
+
+  // Persist both maps whenever they change.
+  useEffect(() => {
+    try { window.localStorage.setItem(COUNTED_KEY, JSON.stringify(counted)); } catch { /* ignore */ }
+  }, [counted]);
+  useEffect(() => {
+    try { window.localStorage.setItem(RECEIVED_KEY, JSON.stringify(received)); } catch { /* ignore */ }
+  }, [received]);
 
   const aedOf = (it: TimelineItemData) => toAED(it.amt, it.ccy);
 

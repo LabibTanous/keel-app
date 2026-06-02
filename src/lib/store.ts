@@ -133,6 +133,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     profile.bufferBalance,
     profile.targetMonths,
     taxTurnover,
+    { taxMode: profile.taxMode, taxFlatRate: profile.taxFlatRate },
   );
 
   const runway = computeRunway(profile.bufferBalance, profile.essentials);
@@ -148,7 +149,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   const volTrend = volatilityTrend(profile.incomes);
   const interpretations = interpret(
     { range, paycheck: rawPaycheck, allocation, runway, outlook, trackedThisMonth, taxTurnover },
-    { essentials: profile.essentials, targetMonths: profile.targetMonths, region: profile.region },
+    { essentials: profile.essentials, targetMonths: profile.targetMonths, region: profile.region, taxMode: profile.taxMode, taxFlatRate: profile.taxFlatRate },
     profile.incomes,
   );
 

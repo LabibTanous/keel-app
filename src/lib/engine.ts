@@ -50,6 +50,10 @@ export interface Profile {
   multiCurrency?: boolean;
   annualRevenue?: number;  // self-reported annual revenue, AED
   dependants?: number;
+  // ── User-defined tax (region no longer auto-taxes) ──────────────────────────
+  taxMode?: 'none' | 'flat' | 'uae_ct'; // default 'none'
+  taxFlatRate?: number;     // percent, e.g. 15 (flat mode)
+  taxLocationLabel?: string; // display only — where they pay tax; not used for math
 }
 
 export interface IncomeRange {
@@ -110,9 +114,11 @@ export const UAE_CT_RATE = 0.09;
 export const UAE_CT_REGISTRATION_TURNOVER = 1_000_000; // AED turnover → must register
 
 // Progressive bracket type: marginal rate applied to the slice up to `upTo` (local currency).
-interface Bracket { upTo: number; rate: number; }
+export interface Bracket { upTo: number; rate: number; }
 
-// Egypt 2025 personal income tax (EGP), on net income after the personal exemption.
+// ── DORMANT progressive brackets (Egypt/Jordan 2025) ─────────────────────────
+// Region no longer auto-applies these. Kept for a future explicit "progressive"
+// tax mode / region preset. NOT fired by estimateAnnualTax today. Do not delete.
 export const EGYPT_EXEMPTION_EGP = 20_000;
 export const EGYPT_BRACKETS: Bracket[] = [
   { upTo: 40_000, rate: 0 },
@@ -123,9 +129,6 @@ export const EGYPT_BRACKETS: Bracket[] = [
   { upTo: 1_200_000, rate: 0.25 },
   { upTo: Infinity, rate: 0.275 },
 ];
-
-// Jordan 2025 personal income tax (JOD), after the personal exemption.
-// +1% national contribution above JOD 200k.
 export const JORDAN_EXEMPTION_JOD = 9_000;
 export const JORDAN_BRACKETS: Bracket[] = [
   { upTo: 5_000, rate: 0.05 },
@@ -138,8 +141,9 @@ export const JORDAN_BRACKETS: Bracket[] = [
 export const JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD = 200_000;
 export const JORDAN_NATIONAL_CONTRIB_RATE = 0.01;
 
-/** Apply progressive brackets to a taxable amount (in the bracket currency). */
-function applyBrackets(taxable: number, brackets: Bracket[]): number {
+/** Apply progressive brackets to a taxable amount (in the bracket currency).
+ *  DORMANT helper — exported, retained for a future explicit progressive mode. */
+export function applyBrackets(taxable: number, brackets: Bracket[]): number {
   if (taxable <= 0) return 0;
   let tax = 0;
   let lower = 0;
@@ -152,39 +156,34 @@ function applyBrackets(taxable: number, brackets: Bracket[]): number {
   return tax;
 }
 
+/** Profile fields that drive the tax estimate (region no longer auto-taxes). */
+export type TaxConfig = Pick<Profile, 'taxMode' | 'taxFlatRate'>;
+
 /**
- * Estimated ANNUAL tax in AED, derived from annual turnover (AED).
+ * Estimated ANNUAL tax in AED, driven by what the USER told us (not region).
  * SINGLE SOURCE OF TRUTH — used by computeAllocation (÷12) and the Tax screen.
  * Rough estimate only, never advice.
+ *   'none'   → 0 (honest default — most Gulf freelancers owe no personal income tax)
+ *   'flat'   → turnover × (taxFlatRate / 100)
+ *   'uae_ct' → 9% on profit above AED 375k (profit = turnover × 0.30), only once
+ *              turnover ≥ AED 1M (registration line)
  */
-export function estimateAnnualTax(turnoverAED: number, region: string): number {
-  const r = TAX_REGIONS[region];
-  if (!r || turnoverAED <= 0) return 0;
+export function estimateAnnualTax(turnoverAED: number, tax: TaxConfig): number {
+  if (turnoverAED <= 0) return 0;
+  const mode = tax.taxMode ?? 'none';
 
-  if (r.kind === 'none') return 0;
+  if (mode === 'flat') {
+    const rate = Math.max(0, tax.taxFlatRate ?? 0);
+    return turnoverAED * (rate / 100);
+  }
 
-  if (r.kind === 'uae_ct') {
+  if (mode === 'uae_ct') {
+    if (turnoverAED < UAE_CT_REGISTRATION_TURNOVER) return 0;
     const profit = turnoverAED * ASSUMED_PROFIT_MARGIN;
     return Math.max(0, profit - UAE_CT_FREE_THRESHOLD) * UAE_CT_RATE;
   }
 
-  // progressive — convert AED turnover to local currency, treat as net professional
-  // income (conservative: no expense deduction modelled), apply exemption + brackets.
-  const local = fromAED(turnoverAED, r.currency);
-  if (region === 'EG') {
-    const taxable = Math.max(0, local - EGYPT_EXEMPTION_EGP);
-    const taxLocal = applyBrackets(taxable, EGYPT_BRACKETS);
-    return toAED(taxLocal, 'EGP');
-  }
-  if (region === 'JO') {
-    const taxable = Math.max(0, local - JORDAN_EXEMPTION_JOD);
-    let taxLocal = applyBrackets(taxable, JORDAN_BRACKETS);
-    if (taxable > JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD) {
-      taxLocal += (taxable - JORDAN_NATIONAL_CONTRIB_THRESHOLD_JOD) * JORDAN_NATIONAL_CONTRIB_RATE;
-    }
-    return toAED(taxLocal, 'JOD');
-  }
-  return 0;
+  return 0; // 'none'
 }
 
 /** Does this region require any tax set-aside at all? (false for GCC non-UAE) */
@@ -278,14 +277,21 @@ export function computeRangeFromIncomes(
   const activeMonths = activeKeys.length;
   const density = activeMonths / elapsedMonths;
 
+  const isMonthly = incomePattern === 'monthly';
   const taggedLumpy = incomePattern === 'project' || incomePattern === 'irregular' || incomePattern === 'quarterly';
   const sparseActivity = elapsedMonths >= 3 && density < 0.6;
-  // Recent dense burst: every month in the observed span was active (density 1.0)
-  // and there are few months — treat as a normal (if provisional) monthly earner,
-  // not a thinly-spread annual one.
-  const denseRecentBurst = density >= 0.999 && activeMonths <= 3;
+  // Too few months to trust as a steady monthly cadence (and not declared monthly).
+  // A single AED 150k payment with low bills must NOT be read as ~50k/mo income —
+  // one payment is not proof of a monthly wage. Spread it over the year (honest,
+  // lower number wins). The user can declare 'monthly' to override, or log more
+  // months to sharpen it.
+  const tooFewToTrust = activeMonths < 3 && !isMonthly;
+  // Recent dense burst: 2–3 CONSECUTIVE active months — a genuine busy stretch, kept
+  // on the monthly path so a freelancer mid-busy-stretch isn't crushed. Requires
+  // activeMonths >= 2 (a single month is never a "burst").
+  const denseRecentBurst = density >= 0.999 && activeMonths >= 2 && activeMonths <= 3;
 
-  if ((taggedLumpy || sparseActivity) && !denseRecentBurst) {
+  if ((taggedLumpy || sparseActivity || tooFewToTrust) && !denseRecentBurst) {
     const total = activeKeys.reduce((s, k) => s + monthly[k], 0);
     const divisor = Math.max(12, elapsedMonths);
     const spreadMonthly = total / divisor;
@@ -325,32 +331,22 @@ export function computePaycheck(
 
 /**
  * Allocation buckets. Sum to paycheck.
- * Tax = monthly share of the SINGLE estimateAnnualTax() figure (÷12), gated to
- * when the obligation actually applies. No VAT. GCC non-UAE → tax 0.
+ * Tax = monthly share of estimateAnnualTax() (÷12), driven by the user's tax
+ * config (taxMode/taxFlatRate), NOT the region. No VAT. Default mode 'none' → 0.
+ * `_region` is retained (positional) for caller compatibility but no longer taxes.
  */
 export function computeAllocation(
   paycheck: number,
   essentials: number,
-  region: string,
+  _region: string,
   zakatOn: boolean,
   zakatableWealth: number,
   bufferBalance: number,
   targetMonths: number,
   taxTurnover = 0,
+  taxConfig: TaxConfig = {},
 ): Allocation {
-  let tax = 0;
-  const r = TAX_REGIONS[region];
-  if (r && r.kind !== 'none' && taxTurnover > 0) {
-    // UAE CT only sets aside once registration turnover is crossed; progressive
-    // regions set aside whenever the estimate is positive (above exemption).
-    if (r.kind === 'uae_ct') {
-      if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER) {
-        tax = Math.round(estimateAnnualTax(taxTurnover, region) / 12);
-      }
-    } else {
-      tax = Math.round(estimateAnnualTax(taxTurnover, region) / 12);
-    }
-  }
+  const tax = taxTurnover > 0 ? Math.round(estimateAnnualTax(taxTurnover, taxConfig) / 12) : 0;
 
   const zakat = zakatOn ? Math.round((zakatableWealth * 0.025) / 12) : 0;
 
@@ -549,11 +545,13 @@ export function interpret(
     essentials: number;
     targetMonths: number;
     region: string;
+    taxMode?: 'none' | 'flat' | 'uae_ct';
+    taxFlatRate?: number;
   },
   incomes: IncomeItem[],
 ): Interpretations {
   const { range, allocation, runway, outlook, taxTurnover } = planData;
-  const { essentials, region } = profileData;
+  const { essentials, taxMode, taxFlatRate } = profileData;
 
   const paycheckWhy = range.provisional
     ? 'An early estimate — log more months of income and this sharpens.'
@@ -579,27 +577,22 @@ export function interpret(
     outlookMeaning = "On track so far. Keep an eye on what's coming in.";
   }
 
-  // taxMeaning — region-aware, no VAT
+  // taxMeaning — driven by the user's tax choice, not the region.
   let taxMeaning = '';
-  const r = TAX_REGIONS[region];
-  if (r) {
-    if (r.kind === 'none') {
-      taxMeaning = ''; // no personal income tax in this region — nothing to surface
-    } else if (r.kind === 'uae_ct') {
-      if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER) {
-        taxMeaning = "You've crossed the AED 1M turnover line — Corporate Tax registration applies.";
-      } else if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER * 0.7) {
-        taxMeaning = `You're approaching the AED 1M Corporate Tax line (${Math.round((taxTurnover / UAE_CT_REGISTRATION_TURNOVER) * 100)}% there) — nothing due yet, just so it doesn't surprise you.`;
-      }
-    } else {
-      // progressive (Egypt/Jordan) — estimate is on GROSS income, so flag that
-      // actual tax is likely lower after deductible business expenses.
-      const annual = estimateAnnualTax(taxTurnover, region);
-      if (annual > 0) {
-        taxMeaning = `Estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr income tax on your gross income — your actual tax is likely lower after business expenses. An estimate, not tax advice.`;
-      }
+  const mode = taxMode ?? 'none';
+  if (mode === 'uae_ct') {
+    if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER) {
+      taxMeaning = "You've crossed the AED 1M turnover line — Corporate Tax registration applies.";
+    } else if (taxTurnover >= UAE_CT_REGISTRATION_TURNOVER * 0.7) {
+      taxMeaning = `You're approaching the AED 1M Corporate Tax line (${Math.round((taxTurnover / UAE_CT_REGISTRATION_TURNOVER) * 100)}% there) — nothing due yet, just so it doesn't surprise you.`;
+    }
+  } else if (mode === 'flat') {
+    const annual = estimateAnnualTax(taxTurnover, { taxMode, taxFlatRate });
+    if (annual > 0) {
+      taxMeaning = `Estimated ≈ AED ${Math.round(annual).toLocaleString('en-US')}/yr tax at the ${taxFlatRate ?? 0}% rate you set — an estimate, not tax advice.`;
     }
   }
+  // mode 'none' → no tax surfaced (honest default).
 
   let spendingMeaning = '';
   if (allocation.spending <= 0) {

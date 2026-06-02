@@ -5,7 +5,6 @@
  */
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { usePlan } from '@/lib/store';
@@ -88,6 +87,11 @@ interface ObData {
   employmentType: 'sole_trader' | 'company' | 'employed_freelance' | 'employed' | '';
   multiCurrency: boolean | null;
   dependants: number;
+  // Tax — user-declared, not region-inferred.
+  taxPays: 'yes' | 'no' | 'unsure' | '';
+  taxMode: 'flat' | 'uae_ct' | '';
+  taxFlatRate: string;
+  taxLocationLabel: string;
 }
 
 const INITIAL_DATA: ObData = {
@@ -119,6 +123,10 @@ const INITIAL_DATA: ObData = {
   employmentType: '',
   multiCurrency: null,
   dependants: 0,
+  taxPays: '',
+  taxMode: '',
+  taxFlatRate: '',
+  taxLocationLabel: '',
 };
 
 // ── Shared input styles ──────────────────────────────────────────────────────
@@ -375,6 +383,81 @@ function RegionStep({
   );
 }
 
+// ── Tax sub-step (user-declared, plain, one decision at a time) ──────────────
+
+function TaxStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) => void }) {
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+    fontFamily: 'var(--font-ui)', fontSize: 13, fontWeight: 600,
+    background: active ? 'var(--pine)' : 'var(--surface-2)',
+    color: active ? 'var(--on-pine)' : 'var(--muted)',
+  });
+  const note = (s: string) => (
+    <p style={{ margin: '8px 2px 0', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>{s}</p>
+  );
+  return (
+    <div style={{ marginBottom: 14, paddingTop: 6, borderTop: '1px solid var(--hairline)' }}>
+      <div className="smallcaps" style={{ fontSize: 10.5, margin: '8px 0 10px' }}>Tax</div>
+      <div style={{ fontSize: 14, color: 'var(--ink)', marginBottom: 10 }}>Do you pay income or business tax anywhere?</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {([['no', 'No'], ['yes', 'Yes'], ['unsure', 'Not sure']] as const).map(([v, lbl]) => (
+          <button key={v} type="button"
+            onClick={() => set({ taxPays: v, ...(v !== 'yes' ? { taxMode: '', taxFlatRate: '', taxLocationLabel: '' } : {}) })}
+            style={pill(data.taxPays === v)}>{lbl}</button>
+        ))}
+      </div>
+
+      {data.taxPays === 'no' && note("Most freelancers based in the UAE and the Gulf don't pay personal income tax. We'll leave tax out of your plan — you can change this anytime.")}
+      {data.taxPays === 'unsure' && note("If you're tax-resident outside the Gulf (e.g. Egypt, Jordan, or your home country), you may owe income tax there — worth checking. We'll leave it out for now; you can turn it on later.")}
+
+      {data.taxPays === 'yes' && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 13, color: 'var(--ink)', marginBottom: 6 }}>Where?</div>
+          <input
+            value={data.taxLocationLabel}
+            onChange={(e) => set({ taxLocationLabel: e.target.value })}
+            placeholder="e.g. Egypt, UK, home country"
+            className="focus-ring"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12,
+              border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)',
+              fontFamily: 'var(--font-ui)', fontSize: 15,
+            }}
+          />
+
+          <div style={{ fontSize: 13, color: 'var(--ink)', margin: '14px 0 8px' }}>How would you like to estimate it?</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => set({ taxMode: 'flat' })} style={pill(data.taxMode === 'flat')}>Flat % of income</button>
+            <button type="button" onClick={() => set({ taxMode: 'uae_ct' })} style={pill(data.taxMode === 'uae_ct')}>UAE Corporate Tax</button>
+          </div>
+
+          {data.taxMode === 'flat' && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Tax rate</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  value={data.taxFlatRate}
+                  onChange={(e) => set({ taxFlatRate: e.target.value.replace(/[^0-9.]/g, '') })}
+                  inputMode="decimal" placeholder="15"
+                  className="focus-ring"
+                  style={{
+                    width: 90, boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12,
+                    border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)',
+                    fontFamily: 'var(--font-ui)', fontSize: 15, textAlign: 'right',
+                  }}
+                />
+                <span style={{ fontSize: 15, color: 'var(--muted)' }}>% of income</span>
+              </div>
+              {note('Keel sets this share aside each month. Based on the rate you set — an estimate, not tax advice.')}
+            </div>
+          )}
+          {data.taxMode === 'uae_ct' && note('9% on profit above AED 375k (profit ≈ 30% of turnover), once you pass AED 1M turnover. An estimate, not tax advice.')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Step 2: Essentials ────────────────────────────────────────────────────────
 
 function EssentialsStep({
@@ -509,17 +592,7 @@ function EssentialsStep({
         <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} placeholder="0 (optional)" />
       </ObField>
 
-      {(data.regionCode === 'AE' || data.regionCode === 'EG' || data.regionCode === 'JO') && (
-        <div style={{ marginBottom: 14 }}>
-          <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 8 }}>Est. annual revenue</div>
-          <ObAmount value={data.annualRevenue} onChange={(v) => set({ annualRevenue: v })} ccy={data.ccy} placeholder="0 (optional)" />
-          <p style={{ margin: '6px 2px 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-            {data.regionCode === 'AE'
-              ? 'Keel watches this toward the AED 1M Corporate Tax line — an estimate, not tax advice.'
-              : 'Keel estimates your income tax from this — an estimate, not tax advice.'}
-          </p>
-        </div>
-      )}
+      <TaxStep data={data} set={set} />
 
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -1128,84 +1201,9 @@ function SeedIncomeStep({
       >
         + Add another payment
       </button>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          margin: '22px 2px 14px',
-        }}
-      >
-        <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            color: 'var(--muted)',
-          }}
-        >
-          or
-        </span>
-        <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
-      </div>
-      <Link
-        href="/import"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          background: 'var(--surface)',
-          border: '1px solid var(--hairline)',
-          borderRadius: 14,
-          padding: '14px 15px',
-          textDecoration: 'none',
-          cursor: 'pointer',
-        }}
-      >
-        <span
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            background: 'var(--surface-2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 16V4M7 9l5-5 5 5M5 18v2h14v-2"
-              stroke="var(--pine)"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--ink)' }}>
-            Import bank statement
-          </span>
-          <span style={{ display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 1 }}>
-            Upload a CSV from your bank
-          </span>
-        </span>
-        <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
-          <path
-            d="M1 1l6 6-6 6"
-            stroke="var(--muted)"
-            strokeWidth="2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.6"
-          />
-        </svg>
-      </Link>
+      <p style={{ margin: '18px 2px 0', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+        You can import a bank statement (CSV or PDF) later from the app — once you&apos;re signed in.
+      </p>
     </div>
   );
 }
@@ -1579,6 +1577,14 @@ export function OnboardingClient(): React.ReactElement {
       multiCurrency: data.multiCurrency ?? undefined,
       annualRevenue: annualRevenue > 0 ? annualRevenue : undefined,
       dependants: data.dependants,
+      // Tax — user-declared. 'yes' + a chosen mode → that mode; anything else → none.
+      taxMode: data.taxPays === 'yes' && data.taxMode ? data.taxMode : 'none',
+      taxFlatRate: data.taxPays === 'yes' && data.taxMode === 'flat'
+        ? (parseFloat(data.taxFlatRate.replace(/[^0-9.]/g, '')) || 0)
+        : undefined,
+      taxLocationLabel: data.taxPays === 'yes' && data.taxLocationLabel.trim()
+        ? data.taxLocationLabel.trim()
+        : undefined,
     };
 
     const userId = typeof crypto !== 'undefined' && crypto.randomUUID
