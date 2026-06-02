@@ -151,13 +151,15 @@ function AddForm({ type, onDone }: AddFormProps) {
     type === 'income' ? 'likely' :
     type === 'expense' ? 'oneoff' : 'on';
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const [seg, setSeg] = useState(defaultSeg);
   const [ccy, setCcy] = useState('AED');
   const [amount, setAmount] = useState('');
   const [source, setSource] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(today);
   const [paymentName, setPaymentName] = useState('');
-  const [paymentDue, setPaymentDue] = useState('');
+  const [paymentDue, setPaymentDue] = useState(today);
 
   const amtNum = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
 
@@ -165,7 +167,6 @@ function AddForm({ type, onDone }: AddFormProps) {
     // For income/received: wire into store
     if (type === 'income' || type === 'received') {
       if (amtNum > 0) {
-        const today = new Date().toISOString().slice(0, 10);
         const item: IncomeItem = {
           amount: amtNum,
           currency: ccy,
@@ -179,14 +180,14 @@ function AddForm({ type, onDone }: AddFormProps) {
     if (type === 'payment') {
       const parsedAmt = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
       if (parsedAmt > 0 && paymentName) {
-        const dueStr = paymentDue || 'Jul 15';
-        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const firstWord = dueStr.trim().split(/[\s,]+/)[0];
-        const parsedMonth = monthNames.find(m => m.toLowerCase() === firstWord.toLowerCase()) ?? firstWord;
+        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const dueDate = paymentDue ? new Date(paymentDue + 'T00:00:00') : new Date();
+        const m = MONTHS[dueDate.getMonth()];
+        const pos = (dueDate.getMonth() + dueDate.getDate() / 31) / 12;
         const bp: BigPayment = {
           id: Date.now().toString(),
-          m: parsedMonth,
-          pos: 0.5,
+          m,
+          pos: Math.min(Math.max(pos, 0), 1),
           name: paymentName,
           amt: parsedAmt,
           status: seg === 'on' ? 'saving' : 'soon',
@@ -260,14 +261,16 @@ function AddForm({ type, onDone }: AddFormProps) {
             </Field>
           );
         }
-        // Date field for income/received
+        // Date field for income/received — native date picker
         if ((type === 'income' || type === 'received') && (l === 'Expected' || l === 'Date received')) {
           return (
             <Field key={l} label={l}>
-              <TextInput
+              <input
+                aria-label={l}
+                type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                placeholder={ph}
+                style={inputStyle}
               />
             </Field>
           );
@@ -299,10 +302,12 @@ function AddForm({ type, onDone }: AddFormProps) {
         if (type === 'payment' && l === 'Due') {
           return (
             <Field key={l} label={l}>
-              <TextInput
+              <input
+                aria-label="Due date"
+                type="date"
                 value={paymentDue}
                 onChange={(e) => setPaymentDue(e.target.value)}
-                placeholder={ph}
+                style={inputStyle}
               />
             </Field>
           );
