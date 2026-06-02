@@ -42,7 +42,8 @@ export interface Profile {
   bufferBalance: number;   // AED
   targetMonths: number;
   zakatOn: boolean;
-  zakatableWealth?: number; // AED
+  zakatableWealth?: number; // legacy onboarding snapshot (AED) — store re-derives live (G3)
+  propertyAssets?: number;  // illiquid property value (AED) — EXCLUDED from zakatable wealth (G3)
   incomes: IncomeItem[];
   paycheckOverride?: number;
   incomePattern?: 'monthly' | 'quarterly' | 'project' | 'irregular';
@@ -386,6 +387,21 @@ export function computeAllocation(
 export function computeRunway(bufferBalance: number, essentials: number): number {
   if (essentials <= 0) return 0;
   return Math.round((bufferBalance / essentials) * 10) / 10;
+}
+
+/**
+ * scenario G3 — live zakatable wealth, re-derived each compute (not a frozen
+ * onboarding snapshot). Tracks the buffer as it grows. EXCLUDES illiquid property;
+ * subtracts the dependant allowance. Estimate only — never advice.
+ *   zakatable = max(0, bufferBalance − propertyAssets − dependants × 3,000)
+ */
+export function liveZakatableWealth(
+  profile: Pick<Profile, 'bufferBalance' | 'propertyAssets' | 'dependants' | 'zakatOn'>,
+): number {
+  if (!profile.zakatOn) return 0;
+  const property = profile.propertyAssets ?? 0;
+  const allowance = (profile.dependants ?? 0) * 3000;
+  return Math.max(0, profile.bufferBalance - property - allowance);
 }
 
 export function computeOutlook(

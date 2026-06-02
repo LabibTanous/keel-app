@@ -19,6 +19,7 @@ import {
   interpret,
   volatilityTrend,
   goalTradeoff,
+  liveZakatableWealth,
 } from './engine';
 
 export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
@@ -59,6 +60,7 @@ export interface Plan {
   volatilityTrend: { trend: 'choppier' | 'steadier' | 'stable'; message: string };
   goalInfo: GoalTradeoff;
   goalTarget: number;
+  zakatableWealth: number; // live, re-derived (G3)
   bigPayments: BigPayment[];
   userGoals: UserGoal[];
   monthlyGoalContrib: number;
@@ -124,12 +126,16 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     taxTurnover = Math.max(taxTurnover, profile.annualRevenue);
   }
 
+  // G3: re-derive zakatable wealth live (tracks the buffer, excludes property), not
+  // the frozen onboarding snapshot.
+  const zakatableWealth = liveZakatableWealth(profile);
+
   const allocation = computeAllocation(
     rawPaycheck,
     profile.essentials,
     profile.region,
     profile.zakatOn,
-    profile.zakatableWealth ?? 0,
+    zakatableWealth,
     profile.bufferBalance,
     profile.targetMonths,
     taxTurnover,
@@ -207,6 +213,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     volatilityTrend: { trend: volTrend.trend, message: volTrend.message },
     goalInfo,
     goalTarget,
+    zakatableWealth,
     bigPayments,
     userGoals,
     monthlyGoalContrib,

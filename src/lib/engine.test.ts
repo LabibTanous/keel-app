@@ -24,6 +24,7 @@ import {
   volatilityTrend,
   interpret,
   detectSignals,
+  liveZakatableWealth,
   estimateAnnualTax,
   CCY_RATES,
   FX_AS_OF,
@@ -689,6 +690,29 @@ describe('Scenario E4 — lumpy earner: empty month between payments is not "lea
     const monthly = detectSignals(range, alloc, 0, 0.6, 'monthly');
     expect(lumpy.some(s => /running lean/i.test(s.title))).toBe(false);
     expect(monthly.some(s => /running lean/i.test(s.title))).toBe(true);
+  });
+});
+
+describe('Scenario G3 — live zakatable wealth (buffer-tracking, property excluded)', () => {
+  it('zakat tracks the live buffer — grows as the buffer grows', () => {
+    // scenario G3
+    const at60 = liveZakatableWealth({ bufferBalance: 60000, zakatOn: true });
+    const at80 = liveZakatableWealth({ bufferBalance: 80000, zakatOn: true });
+    expect(at60).toBe(60000);
+    expect(at80).toBe(80000);
+    expect(at80).toBeGreaterThan(at60);
+    // monthly zakat set-aside flows through allocation: 80k × 2.5% / 12
+    expect(computeAllocation(10000, 6200, 'AE', true, at80, 0, 3, 0, {}).zakat).toBe(Math.round(80000 * 0.025 / 12));
+  });
+  it('property is EXCLUDED from zakatable wealth', () => {
+    // scenario G3 — buffer 160k incl 100k property → only 60k zakatable
+    expect(liveZakatableWealth({ bufferBalance: 160000, propertyAssets: 100000, zakatOn: true })).toBe(60000);
+  });
+  it('dependant allowance still deducted; off → 0', () => {
+    // scenario G3
+    expect(liveZakatableWealth({ bufferBalance: 60000, dependants: 2, zakatOn: true })).toBe(60000 - 6000);
+    expect(liveZakatableWealth({ bufferBalance: 60000, zakatOn: false })).toBe(0);
+    expect(liveZakatableWealth({ bufferBalance: 50000, propertyAssets: 80000, zakatOn: true })).toBe(0); // never negative
   });
 });
 

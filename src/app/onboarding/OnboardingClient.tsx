@@ -1571,6 +1571,7 @@ export function OnboardingClient(): React.ReactElement {
       targetMonths: data.targetMonths,
       zakatOn,
       zakatableWealth,
+      propertyAssets: Math.round(toAED(parseInt(data.savingsProperty.replace(/[^0-9]/g, ''), 10) || 0, data.ccy)),
       incomes: incomeItems,
       incomePattern: data.incomePattern || undefined,
       employmentType: data.employmentType || undefined,

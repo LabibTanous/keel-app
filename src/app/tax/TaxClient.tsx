@@ -169,7 +169,7 @@ export function TaxClient() {
   const region = profile.region;
   const turnover = plan.taxTurnover;
   const zakatOn = profile.zakatOn;
-  const zakatableWealth = profile.zakatableWealth ?? 0;
+  const zakatableWealth = plan.zakatableWealth; // live, re-derived (G3) — not the frozen snapshot
 
   const taxRegion = TAX_REGIONS[region];
   const ccy = taxRegion?.currency ?? 'AED';
