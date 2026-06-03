@@ -462,6 +462,27 @@ export function computeAfford(
   };
 }
 
+// ── Big payment savings plan ──────────────────────────────────────────────────
+
+// Whole months from `now` until a 'YYYY-MM' due date. Floors at 1 so a payment
+// due this month (or already past) still teaches a single-month set-aside instead
+// of dividing by zero. `fallback` is used when no due date is known yet.
+export function monthsUntilDue(dueDate: string | undefined, now: Date, fallback = 6): number {
+  if (!dueDate) return fallback;
+  const [y, m] = dueDate.split('-').map(Number);
+  if (!y || !m) return fallback;
+  const currentYM = now.getFullYear() * 12 + now.getMonth();
+  const dueYM = y * 12 + (m - 1);
+  return Math.max(1, dueYM - currentYM);
+}
+
+// What you'd set aside each month to have `amt` ready by its due date — the honest
+// save rate Keel teaches per payment, independent of whether the current paycheck
+// can fund it. Spread evenly over the real months-until-due.
+export function bigPaymentMonthly(amt: number, dueDate: string | undefined, now: Date): number {
+  return Math.round(Math.max(0, amt) / monthsUntilDue(dueDate, now));
+}
+
 // ── Cross-link functions ──────────────────────────────────────────────────────
 
 export interface IncomingPaymentHint {

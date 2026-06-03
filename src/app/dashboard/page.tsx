@@ -208,8 +208,19 @@ function RangeBand({
 
 // ── Allocation section ───────────────────────────────────────────────────────
 
+function SubLine({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 2 }}>
+      <span style={{ color: 'var(--muted)', fontSize: 13 }}>↳</span>
+      <span style={{ flex: 1, fontSize: 13.5, color: strong ? 'var(--ink)' : 'var(--muted)', fontWeight: strong ? 600 : 400 }}>{label}</span>
+      <span className="tnum" style={{ fontSize: 14, color: strong ? 'var(--ink)' : 'var(--muted)' }}>{money(value)}</span>
+    </div>
+  );
+}
+
 function AllocationSection({
   paycheck, rentAndBills, tax, zakat, zakatOn, buffer, spending,
+  bigPaymentReserve, bigPaymentNeeded, goalContrib, discretionary, hasBigPayments,
 }: {
   paycheck: number;
   rentAndBills: number;
@@ -218,6 +229,11 @@ function AllocationSection({
   zakatOn: boolean;
   buffer: number;
   spending: number;
+  bigPaymentReserve: number;
+  bigPaymentNeeded: number;
+  goalContrib: number;
+  discretionary: number;
+  hasBigPayments: boolean;
 }) {
   const buckets: [string, number, string][] = (zakatOn && zakat > 0) ? [
     ['Rent & bills',    rentAndBills, 'var(--pine)'],
@@ -257,6 +273,39 @@ function AllocationSection({
           </div>
         ))}
       </div>
+
+      {/* How the Spending pool splits — makes saving for goals & big payments visible */}
+      {(bigPaymentReserve > 0 || goalContrib > 0) && (
+        <div style={{
+          marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)',
+          display: 'flex', flexDirection: 'column', gap: 9,
+        }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+            Of that spending, set aside
+          </div>
+          {bigPaymentReserve > 0 && (
+            <SubLine label="Big payments fund" value={bigPaymentReserve} />
+          )}
+          {goalContrib > 0 && (
+            <SubLine label="Saving goals" value={goalContrib} />
+          )}
+          <SubLine label="Free to spend" value={discretionary} strong />
+        </div>
+      )}
+
+      {/* Honest gap: payments logged but the plan can't fully fund the set-aside */}
+      {hasBigPayments && bigPaymentNeeded > bigPaymentReserve && (
+        <div style={{
+          marginTop: 14, padding: '12px 14px', borderRadius: 12,
+          background: 'var(--clay-soft)', border: '1px solid var(--clay)',
+          fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)',
+        }}>
+          Your big payments need <strong>≈{money(bigPaymentNeeded)}/mo</strong> set aside to be ready in time.
+          {bigPaymentReserve > 0
+            ? <> Your plan can spare <strong>{money(bigPaymentReserve)}</strong> — raise your paycheck or trim fixed costs to close the gap.</>
+            : <> There&apos;s nothing free to set aside at this paycheck — raise it, trim fixed costs, or push a due date out.</>}
+        </div>
+      )}
 
       <Disclaimer style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--hairline)' }}>
         {zakatOn
@@ -457,6 +506,11 @@ function HomeForward() {
             zakatOn={profile.zakatOn}
             buffer={allocation.buffer}
             spending={allocation.spending}
+            bigPaymentReserve={plan.monthlyBigPaymentReserve}
+            bigPaymentNeeded={plan.monthlyBigPaymentReserveNeeded}
+            goalContrib={plan.monthlyGoalContrib}
+            discretionary={plan.discretionary}
+            hasBigPayments={plan.bigPayments.length > 0}
           />
         </Card>
       </div>

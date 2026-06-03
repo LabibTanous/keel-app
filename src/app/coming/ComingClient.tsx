@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { usePlan } from '@/lib/store';
-import { toAED } from '@/lib/engine';
+import { toAED, bigPaymentMonthly, monthsUntilDue } from '@/lib/engine';
 import { PAY_STATUS, Card, Disclaimer, Segmented, money, fmtFx, approxAED, Cur } from '@/components/keel/ui';
 import type { IncomeItem } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
@@ -176,17 +176,24 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
 
 function BigPaymentRow({ payment, last }: { payment: BigPayment; last: boolean }) {
   const ps = PAY_STATUS[payment.status];
+  const now = new Date();
+  const perMonth = bigPaymentMonthly(payment.amt, payment.dueDate, now);
+  const months = monthsUntilDue(payment.dueDate, now);
+  // The save rate Keel teaches: set this aside each month to be ready in time.
+  const plan = months <= 1
+    ? `Due ${payment.m} — set aside ≈${money(payment.amt)} now`
+    : `Set aside ≈${money(perMonth)}/mo · ready by ${payment.m}`;
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '13px 0',
       borderTop: last ? 'none' : '1px solid var(--hairline)',
     }}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{payment.name}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{payment.m}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--pine)', marginTop: 3, fontWeight: 500 }}>{plan}</div>
       </div>
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div className="serif tnum" style={{ fontSize: 17, color: 'var(--ink)' }}>
           <Cur n={payment.amt} />
         </div>

@@ -16,10 +16,15 @@ import { KEEL_OPEN_ADD, KEEL_OPEN_ASSISTANT } from '@/components/keel/GlobalOver
 
 // ── Goal hero ────────────────────────────────────────────────────────────────
 
+// Beyond this horizon a calendar date is meaningless (e.g. a 2M target at 761/mo
+// projects ~218 years out). Past it we tell the honest truth instead of a date.
+const MAX_PROJECTION_MONTHS = 600; // 50 years
+
 function computeProjectedLabel(saved: number, target: number, monthly: number): string {
   if (saved >= target) return '';
   if (monthly <= 0) return '';
   const monthsLeft = Math.ceil((target - saved) / monthly);
+  if (monthsLeft > MAX_PROJECTION_MONTHS) return 'decades away at this pace';
   const projected = new Date();
   projected.setMonth(projected.getMonth() + monthsLeft);
   return projected.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });

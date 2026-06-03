@@ -25,6 +25,8 @@ import {
   interpret,
   detectSignals,
   liveZakatableWealth,
+  monthsUntilDue,
+  bigPaymentMonthly,
   estimateAnnualTax,
   CCY_RATES,
   FX_AS_OF,
@@ -757,5 +759,39 @@ describe('Scenario B3 — thin buffer → modest conservatism haircut', () => {
   it('demo seed unaffected (runway 3.7 → no haircut) — still 9,750', () => {
     // scenario B3 + K3 anchor
     expect(computePaycheck(computeRangeFromIncomes(DEMO), 6200, 23000)).toBe(9750);
+  });
+});
+
+describe('Big payment savings plan — per-payment monthly set-aside', () => {
+  const NOW = new Date('2026-06-15'); // June 2026
+
+  it('monthsUntilDue counts whole months to a YYYY-MM due date', () => {
+    expect(monthsUntilDue('2026-08', NOW)).toBe(2);  // Jun → Aug
+    expect(monthsUntilDue('2026-12', NOW)).toBe(6);  // Jun → Dec
+  });
+
+  it('monthsUntilDue floors at 1 for this-month / past due (never divides by zero)', () => {
+    expect(monthsUntilDue('2026-06', NOW)).toBe(1); // due this month
+    expect(monthsUntilDue('2026-01', NOW)).toBe(1); // already past
+  });
+
+  it('monthsUntilDue falls back to 6 when no/invalid due date', () => {
+    expect(monthsUntilDue(undefined, NOW)).toBe(6);
+    expect(monthsUntilDue('not-a-date', NOW)).toBe(6);
+  });
+
+  it('bigPaymentMonthly spreads the amount evenly over months-until-due', () => {
+    // 10,000 car insurance due Aug (2 months away) → 5,000/mo
+    expect(bigPaymentMonthly(10000, '2026-08', NOW)).toBe(5000);
+    // 200,000 house due Dec (6 months away) → 33,333/mo (honest even when unaffordable)
+    expect(bigPaymentMonthly(200000, '2026-12', NOW)).toBe(33333);
+  });
+
+  it('bigPaymentMonthly for a payment due this month is the full amount', () => {
+    expect(bigPaymentMonthly(2000, '2026-06', NOW)).toBe(2000);
+  });
+
+  it('bigPaymentMonthly never returns negative', () => {
+    expect(bigPaymentMonthly(-500, '2026-12', NOW)).toBe(0);
   });
 });

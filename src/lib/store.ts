@@ -20,6 +20,7 @@ import {
   volatilityTrend,
   goalTradeoff,
   liveZakatableWealth,
+  bigPaymentMonthly,
 } from './engine';
 
 export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
@@ -65,6 +66,7 @@ export interface Plan {
   userGoals: UserGoal[];
   monthlyGoalContrib: number;
   monthlyBigPaymentReserve: number;
+  monthlyBigPaymentReserveNeeded: number;
   discretionary: number;
   thisMonthExpenses: number;
 }
@@ -181,18 +183,18 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
   }
   monthlyGoalContrib = Math.min(monthlyGoalContrib, Math.floor(allocation.spending * 0.4)); // cap at 40% of spending
 
-  // Monthly big payment reserve — save over the real months-until-due (fallback 6).
-  const currentYM = new Date().getFullYear() * 12 + new Date().getMonth();
-  let monthlyBigPaymentReserve = 0;
-  for (const bp of (bigPayments || [])) {
-    let monthsUntil = 6;
-    if (bp.dueDate) {
-      const [dy, dm] = bp.dueDate.split('-').map(Number);
-      if (dy && dm) monthsUntil = Math.max(1, (dy * 12 + (dm - 1)) - currentYM);
-    }
-    monthlyBigPaymentReserve += Math.round(bp.amt / monthsUntil);
-  }
-  monthlyBigPaymentReserve = Math.min(monthlyBigPaymentReserve, Math.floor(allocation.spending * 0.3)); // cap at 30%
+  // Monthly big payment reserve — what you'd set aside each month to be ready in
+  // time, summed over every logged payment (spread across its real months-until-due).
+  const monthlyBigPaymentReserveNeeded = (bigPayments || []).reduce(
+    (sum, bp) => sum + bigPaymentMonthly(bp.amt, bp.dueDate, today),
+    0,
+  );
+  // Fund it from spending, but never let it eat more than 30% — any shortfall is a
+  // gap the user must close (raise pay / trim costs / push the date), surfaced in UI.
+  const monthlyBigPaymentReserve = Math.min(
+    monthlyBigPaymentReserveNeeded,
+    Math.floor(allocation.spending * 0.3),
+  );
 
   const discretionary = Math.max(0, allocation.spending - monthlyGoalContrib - monthlyBigPaymentReserve);
 
@@ -218,6 +220,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     userGoals,
     monthlyGoalContrib,
     monthlyBigPaymentReserve,
+    monthlyBigPaymentReserveNeeded,
     discretionary,
     thisMonthExpenses,
   };
