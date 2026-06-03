@@ -27,6 +27,7 @@ import {
   liveZakatableWealth,
   monthsUntilDue,
   bigPaymentMonthly,
+  assessGoal,
   estimateAnnualTax,
   CCY_RATES,
   FX_AS_OF,
@@ -793,5 +794,43 @@ describe('Big payment savings plan — per-payment monthly set-aside', () => {
 
   it('bigPaymentMonthly never returns negative', () => {
     expect(bigPaymentMonthly(-500, '2026-12', NOW)).toBe(0);
+  });
+});
+
+describe('Goal coaching — assessGoal (honest, no false hope)', () => {
+  const RUNWAY = 46000; // sensible 6-month runway (essentials ~7,666 × 6)
+
+  it('done when already saved enough', () => {
+    const a = assessGoal({ target: 46000, saved: 50000, currentMonthly: 800, capacityMonthly: 2000, suggestedTarget: RUNWAY });
+    expect(a.verdict).toBe('done');
+    expect(a.remaining).toBe(0);
+  });
+
+  it('reachable when current pace lands within 10 years', () => {
+    const a = assessGoal({ target: 46000, saved: 12000, currentMonthly: 1800, capacityMonthly: 2500, suggestedTarget: RUNWAY });
+    expect(a.verdict).toBe('reachable');
+    expect(a.monthsAtCurrent).toBe(Math.ceil(34000 / 1800)); // 19
+  });
+
+  it('unrealistic: a 2,000,000 target at thin capacity → flagged, with a sensible alternative', () => {
+    // mirrors the live screenshot: 2M emergency fund, 12k saved, 761/mo, ~0 free to spend
+    const a = assessGoal({ target: 2_000_000, saved: 12000, currentMonthly: 761, capacityMonthly: 761, suggestedTarget: RUNWAY });
+    expect(a.verdict).toBe('unrealistic');
+    expect(a.suggestedTarget).toBe(46000);
+    expect(a.monthsToSuggestedAtCapacity).toBe(Math.ceil(34000 / 761)); // ~45 — the realistic goal IS reachable
+  });
+
+  it('stuck when nothing is free to set aside — lever is income/costs, not the goal', () => {
+    const a = assessGoal({ target: 46000, saved: 5000, currentMonthly: 0, capacityMonthly: 0, suggestedTarget: RUNWAY });
+    expect(a.verdict).toBe('stuck');
+    expect(a.monthsAtCurrent).toBeNull();
+    expect(a.monthsAtCapacity).toBeNull();
+  });
+
+  it('slow: current pace > 10 years but capacity can do meaningfully better', () => {
+    // 100k target, 5k saved, only 500/mo now (190 months) but 2000/mo possible
+    const a = assessGoal({ target: 100000, saved: 5000, currentMonthly: 500, capacityMonthly: 2000, suggestedTarget: RUNWAY });
+    expect(a.verdict).toBe('slow');
+    expect(a.monthsAtCapacity).toBe(Math.ceil(95000 / 2000)); // 48 — capacity rescues it
   });
 });

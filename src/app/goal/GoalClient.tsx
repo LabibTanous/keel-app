@@ -7,7 +7,8 @@
 import React, { useState } from 'react';
 import { usePlan } from '@/lib/store';
 import type { UserGoal } from '@/lib/store';
-import { goalTradeoff } from '@/lib/engine';
+import { goalTradeoff, assessGoal } from '@/lib/engine';
+import type { GoalAssessment } from '@/lib/engine';
 import { PAY_STATUS, money, moneyK, Card, Cur } from '@/components/keel/ui';
 import { GoalChart } from '@/components/keel/GoalChart';
 import { IconCalendar } from '@/components/keel/icons';
@@ -237,6 +238,133 @@ const GOAL_OPTIONS = [
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+// ── Goal coach — honest, situation-aware guidance toward the goal ──────────────
+
+function monthsFromNowLabel(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + months);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function yearsPhrase(months: number): string {
+  const yrs = Math.round(months / 12);
+  if (yrs >= 50) return 'decades';
+  if (yrs >= 2) return `~${yrs} years`;
+  return `~${months} months`;
+}
+
+function CoachLever({ text }: { text: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+      <span style={{ color: 'var(--pine)', fontSize: 14, lineHeight: 1.5, flexShrink: 0 }}>→</span>
+      <span style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink)' }}>{text}</span>
+    </div>
+  );
+}
+
+function GoalCoach({
+  assessment, goalName, currentMonthly, runwayLow, onAdoptTarget,
+}: {
+  assessment: GoalAssessment;
+  goalName: string;
+  currentMonthly: number;
+  runwayLow: boolean;
+  onAdoptTarget: (target: number) => void;
+}) {
+  const a = assessment;
+  // Is this goal a safety net / runway? Education copy is tailored to that.
+  const isRunway = /runway|emergency|safety|buffer/i.test(goalName);
+  const education = isRunway
+    ? 'A safety net is 3–6 months of essentials set aside for the dry spells freelancing brings — with irregular income, the higher end is the wiser target.'
+    : 'Keel reaches a goal by setting aside a steady amount each month from what your plan leaves free — no investing, no guesswork, just a pace you can keep.';
+
+  let tone: { bg: string; border: string } = { bg: 'var(--surface)', border: 'var(--hairline)' };
+  let headline = '';
+  let body: React.ReactNode = null;
+  const levers: React.ReactNode[] = [];
+
+  if (a.verdict === 'done') {
+    tone = { bg: 'var(--mint-soft)', border: 'var(--mint)' };
+    headline = 'Your safety net is full';
+    body = <>You&apos;ve reached this goal — that&apos;s real protection against a quiet month. Keel will keep it topped up as you spend from it.</>;
+  } else if (a.verdict === 'reachable') {
+    tone = { bg: 'var(--mint-soft)', border: 'var(--mint)' };
+    headline = "You're on a real plan";
+    body = <>At <strong>{money(currentMonthly)}/mo</strong>, you&apos;ll have this fully set aside by <strong>{monthsFromNowLabel(a.monthsAtCurrent ?? 0)}</strong>. Keep the pace.</>;
+    if (a.capacityMonthly > currentMonthly) {
+      levers.push(<>Want it sooner? You could put up to <strong>{money(a.capacityMonthly)}/mo</strong> toward it — ready by <strong>{monthsFromNowLabel(a.monthsAtCapacity ?? 0)}</strong>.</>);
+    }
+  } else if (a.verdict === 'slow') {
+    tone = { bg: 'var(--gold-soft)', border: 'var(--gold)' };
+    headline = 'Reachable — but slow at this pace';
+    body = <>At <strong>{money(currentMonthly)}/mo</strong> this takes <strong>{yearsPhrase(a.monthsAtCurrent ?? 0)}</strong>. You have room to move faster.</>;
+    levers.push(<>Set aside up to <strong>{money(a.capacityMonthly)}/mo</strong> → ready by <strong>{monthsFromNowLabel(a.monthsAtCapacity ?? 0)}</strong>.</>);
+    levers.push(<>Or keep it gentle and give it more time — no pressure, just a longer horizon.</>);
+  } else if (a.verdict === 'unrealistic') {
+    tone = { bg: 'var(--clay-soft)', border: 'var(--clay)' };
+    headline = "This target isn't a plan at your income";
+    body = <>
+      {money(a.remaining)} is <strong>{yearsPhrase(a.monthsAtCapacity ?? 0)}</strong> away even if you put <em>every</em> free dirham toward it. Honest take: it&apos;s a wish, not a plan you can act on right now.
+    </>;
+    if (a.monthsToSuggestedAtCapacity !== null) {
+      levers.push(<>For your situation, a safety net of about <strong>{money(a.suggestedTarget)}</strong> is the goal that actually protects you — reachable in <strong>~{a.monthsToSuggestedAtCapacity} months</strong> at <strong>{money(a.capacityMonthly)}/mo</strong>.</>);
+    }
+    levers.push(<>Hit that first, then aim higher from a position of safety.</>);
+  } else { // stuck
+    tone = { bg: 'var(--clay-soft)', border: 'var(--clay)' };
+    headline = 'Nothing is free to set aside yet';
+    body = <>
+      Right now your whole paycheck is committed to essentials — so there&apos;s no room to save toward this. That&apos;s not willpower; it&apos;s math.
+    </>;
+    levers.push(<>The lever isn&apos;t a bigger goal — it&apos;s a <strong>higher or steadier income</strong>, or <strong>lower fixed costs</strong>. Free up even {money(200)}/mo and Keel starts funding this.</>);
+    levers.push(<>Keel will begin setting money aside automatically the moment your plan has room.</>);
+  }
+
+  return (
+    <div style={{
+      marginTop: 10, background: tone.bg, border: `1px solid ${tone.border}`,
+      borderRadius: 16, padding: '16px 16px 18px',
+    }}>
+      <div className="smallcaps" style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 8 }}>Your plan to get there</div>
+      <div className="serif" style={{ fontSize: 18, color: 'var(--ink)', lineHeight: 1.25, marginBottom: 8 }}>{headline}</div>
+      <p style={{ margin: '0 0 12px', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink)' }}>{body}</p>
+
+      {levers.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 14 }}>
+          {levers.map((l, i) => <CoachLever key={i} text={l} />)}
+        </div>
+      )}
+
+      {runwayLow && a.verdict !== 'stuck' && (
+        <p style={{ margin: '0 0 12px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)', fontStyle: 'italic' }}>
+          Your runway is under 3 months right now — building this safety net is the most useful thing you can do with spare money before any bigger goal.
+        </p>
+      )}
+
+      {(a.verdict === 'unrealistic') && a.monthsToSuggestedAtCapacity !== null && (
+        <button
+          type="button"
+          onClick={() => onAdoptTarget(a.suggestedTarget)}
+          style={{
+            width: '100%', padding: '11px 14px', borderRadius: 12, border: 'none',
+            background: 'var(--pine)', color: 'var(--on-pine)', fontFamily: 'var(--font-ui)',
+            fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginBottom: 14,
+          }}
+        >
+          Use {money(a.suggestedTarget)} as my goal
+        </button>
+      )}
+
+      <p style={{
+        margin: 0, paddingTop: 12, borderTop: '1px solid var(--hairline)',
+        fontSize: 12, lineHeight: 1.5, color: 'var(--muted)',
+      }}>
+        {education} <span style={{ fontStyle: 'italic' }}>Keel guides saving, not investing — it never recommends specific products.</span>
+      </p>
+    </div>
+  );
+}
+
 export function GoalClient() {
   const { plan, profile, setUserGoals } = usePlan();
   const [editing, setEditing] = useState(false);
@@ -268,6 +396,21 @@ export function GoalClient() {
 
   const targetAmount = profile.essentials * profile.targetMonths;
   const tradeoff = goalTradeoff(targetAmount, profile.bufferBalance, plan.allocation.buffer, plan.allocation.spending);
+
+  // Honest coaching: most they could sustainably set aside = what already goes to
+  // the buffer + what's genuinely free to spend (never touches essentials/tax/zakat).
+  const capacityMonthly = Math.max(0, plan.allocation.buffer + plan.discretionary);
+  // Sensible runway target for their situation (irregular income → lean to 6 months).
+  const sensibleMonths = profile.targetMonths && profile.targetMonths > 0 ? profile.targetMonths : 6;
+  const suggestedTarget = Math.max(0, Math.round(profile.essentials * sensibleMonths));
+  const assessment = assessGoal({ target, saved, currentMonthly: monthly, capacityMonthly, suggestedTarget });
+
+  function adoptTarget(t: number) {
+    const base: UserGoal = primaryGoal
+      ? { ...primaryGoal, targetAmt: t }
+      : { name: goalName, custom: '', targetAmt: t, targetDate: '' };
+    setUserGoals([base, ...additionalGoals]);
+  }
 
   function startEdit() {
     setEditGoal(
@@ -450,6 +593,18 @@ export function GoalClient() {
                 >Edit goal</button>
               </div>
             )}
+
+            {/* Honest, situation-aware coaching toward the goal */}
+            {!editing && (
+              <GoalCoach
+                assessment={assessment}
+                goalName={goalName}
+                currentMonthly={monthly}
+                runwayLow={plan.runway < 3}
+                onAdoptTarget={adoptTarget}
+              />
+            )}
+
             {additionalGoals.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div className="smallcaps" style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>Other goals</div>

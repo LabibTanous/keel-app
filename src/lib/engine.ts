@@ -540,6 +540,69 @@ export function goalTradeoff(
   return { requiredMonthly: contribution, newSpending, monthsToGoal, feasible };
 }
 
+// ── Goal coaching ─────────────────────────────────────────────────────────────
+// Honest, situation-aware assessment of whether a savings goal is reachable, and
+// what would actually get the user there — built only from their real numbers, so
+// it never gives false hope. No investment advice; pure saving math.
+
+const SANE_GOAL_HORIZON_MONTHS = 120; // 10 years — past this a "savings goal" stops being a plan
+const ABSURD_GOAL_HORIZON_MONTHS = 600; // 50 years — the target itself is wrong for this income
+
+export type GoalVerdict = 'done' | 'reachable' | 'slow' | 'unrealistic' | 'stuck';
+
+export interface GoalAssessment {
+  verdict: GoalVerdict;
+  remaining: number;
+  monthsAtCurrent: number | null;   // null when nothing is being set aside
+  monthsAtCapacity: number | null;  // null when nothing is free to set aside
+  capacityMonthly: number;          // most they could sustainably set aside (buffer + free-to-spend)
+  monthlyForSaneHorizon: number;    // monthly needed to reach this target within 10 years
+  suggestedTarget: number;          // a sensible runway target = essentials × targetMonths
+  monthsToSuggestedAtCapacity: number | null; // how fast the sensible target is reachable
+}
+
+export function assessGoal(opts: {
+  target: number;
+  saved: number;
+  currentMonthly: number;   // what's going toward the goal now
+  capacityMonthly: number;  // realistic max set-aside without touching essentials/tax/zakat
+  suggestedTarget: number;  // sensible runway target (essentials × targetMonths)
+}): GoalAssessment {
+  const { target, saved, currentMonthly, capacityMonthly, suggestedTarget } = opts;
+  const remaining = Math.max(0, target - saved);
+  const monthsAtCurrent = currentMonthly > 0 ? Math.ceil(remaining / currentMonthly) : null;
+  const monthsAtCapacity = capacityMonthly > 0 ? Math.ceil(remaining / capacityMonthly) : null;
+  const monthlyForSaneHorizon = Math.ceil(remaining / SANE_GOAL_HORIZON_MONTHS);
+  const suggestedRemaining = Math.max(0, suggestedTarget - saved);
+  const monthsToSuggestedAtCapacity = capacityMonthly > 0
+    ? Math.ceil(suggestedRemaining / capacityMonthly)
+    : null;
+
+  let verdict: GoalVerdict;
+  if (remaining === 0) {
+    verdict = 'done';
+  } else if (capacityMonthly <= 0) {
+    verdict = 'stuck'; // no money free to save — the lever is income/costs, not the goal
+  } else if (monthsAtCapacity !== null && monthsAtCapacity > ABSURD_GOAL_HORIZON_MONTHS) {
+    verdict = 'unrealistic'; // even maxed out, 50+ years — target is wrong for this income
+  } else if (monthsAtCurrent === null || monthsAtCurrent > SANE_GOAL_HORIZON_MONTHS) {
+    verdict = 'slow'; // current pace is too slow, but their capacity can do meaningfully better
+  } else {
+    verdict = 'reachable';
+  }
+
+  return {
+    verdict,
+    remaining,
+    monthsAtCurrent,
+    monthsAtCapacity,
+    capacityMonthly,
+    monthlyForSaneHorizon,
+    suggestedTarget,
+    monthsToSuggestedAtCapacity,
+  };
+}
+
 export function volatilityTrend(
   incomes: IncomeItem[],
 ): { recentVolatility: number; priorVolatility: number; trend: 'choppier' | 'steadier' | 'stable'; message: string } {
