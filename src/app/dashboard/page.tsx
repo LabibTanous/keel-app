@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
-import { PAY_STATUS, money, moneyK, amt, Card, Disclaimer, Pot, POT_META, POT_KINDS } from '@/components/keel/ui';
+import { PAY_STATUS, money, moneyK, amt, approxAED, Card, Disclaimer, Pot, POT_META, POT_KINDS } from '@/components/keel/ui';
 import type { PotKind } from '@/lib/engine';
 import { TenseToggle } from '@/components/keel/TenseToggle';
 import { Dock } from '@/components/keel/Dock';
@@ -77,7 +77,7 @@ function InsightCard({ insight, level }: { insight: string; level: 'warning' | '
       color: 'var(--ink)', border: level === 'success' ? '1px solid var(--hairline)' : 'none',
       boxShadow: 'var(--shadow-sm)',
     }}>
-      <span style={{ fontWeight: 600, color: cfg.color, marginRight: 6 }}>
+      <span style={{ fontWeight: 700, color: 'var(--ink)', marginRight: 6 }}>
         {level === 'warning' ? 'Heads up' : level === 'tip' ? 'Note' : 'Good news'}
       </span>
       {insight}
@@ -255,12 +255,12 @@ function PotsSection() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-        <span className="smallcaps">Your pots</span>
+        <h2 className="smallcaps" style={{ margin: 0 }}>Your pots</h2>
         <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>split before it lands</span>
       </div>
 
-      {/* proportion bar — the whole split at a glance */}
-      <div style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', gap: 2, marginBottom: 16 }}>
+      {/* proportion bar — the whole split at a glance (decorative; rows below are the data) */}
+      <div aria-hidden="true" style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', gap: 2, marginBottom: 16 }}>
         {barKinds.map((k) => (
           <div key={k} style={{ width: `${(monthlyTargets[k] / barTotal) * 100}%`, background: POT_META[k].color }} />
         ))}
@@ -307,7 +307,7 @@ function PotsSection() {
           background: 'var(--clay-soft)', border: '1px solid var(--clay)',
           fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)',
         }}>
-          Your big payments need <strong>≈{money(bigNeeded)}/mo</strong> set aside to be ready in time.
+          Your big payments need <strong>{approxAED(bigNeeded)}/mo</strong> set aside to be ready in time.
           {bigReserve > 0
             ? <> Your plan can spare <strong>{money(bigReserve)}</strong> — raise your paycheck or trim fixed costs to close the gap.</>
             : <> There&apos;s nothing free to set aside at this paycheck — raise it, trim fixed costs, or push a due date out.</>}
@@ -401,7 +401,7 @@ function HomeForward() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Empty-state CTA — shown when no income data has been added yet */}
       {isEmpty && (
-        <Link href="/import" className="rise" style={{
+        <Link href="/import" className="rise focus-ring" style={{
           ...D(0),
           display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none',
           background: 'var(--pine-soft)', borderRadius: 'var(--r-card)',
@@ -410,7 +410,7 @@ function HomeForward() {
         }}>
           <span style={{
             width: 42, height: 42, borderRadius: 12, background: 'var(--pine)',
-            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            color: 'var(--on-pine)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -424,7 +424,7 @@ function HomeForward() {
               Import a statement or log an invoice to get started.
             </span>
           </span>
-          <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+          <svg width="8" height="14" viewBox="0 0 8 14" aria-hidden="true" style={{ flexShrink: 0 }}>
             <path d="M1 1l6 6-6 6" stroke="var(--pine)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
           </svg>
         </Link>
@@ -436,7 +436,7 @@ function HomeForward() {
         borderRadius: 'var(--r-card)', padding: '22px var(--pad) 24px',
         boxShadow: 'var(--shadow)',
       }}>
-        <div className="smallcaps" style={{ color: 'var(--hero-ink)', opacity: 0.7 }}>Yours to spend</div>
+        <div className="smallcaps" style={{ color: 'var(--hero-ink)', opacity: 0.7 }}>Paycheck</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
           <span className="serif tnum" style={{ fontSize: 54, fontWeight: 500, lineHeight: 0.95, letterSpacing: -1 }}>
             <span style={{ fontSize: 23, fontWeight: 400, opacity: 0.6, marginRight: 8, letterSpacing: 0 }}>AED</span>
@@ -459,7 +459,7 @@ function HomeForward() {
             {money(plan.pots.routedThisMonth)} routed &amp; split this month
           </p>
         )}
-        <Link href="/paycheck" style={{
+        <Link href="/paycheck" className="focus-ring" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16,
           color: 'var(--hero-ink)', textDecoration: 'none', fontSize: 13, fontWeight: 700,
           background: 'rgba(244,241,230,0.15)', padding: '9px 15px', borderRadius: 'var(--r-pill)',
@@ -498,7 +498,8 @@ function HomeForward() {
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
-                style={{ background: 'var(--gold)', color: '#fff', border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
+                className="focus-ring"
+                style={{ background: 'var(--gold-soft)', color: 'var(--ink)', border: '1px solid var(--gold)', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-ui)' }}
               >
                 Log expenses
               </button>
@@ -522,8 +523,8 @@ function HomeForward() {
           border: '1px solid var(--hairline)',
         }}>
           <div className="smallcaps" style={{ fontSize: 10, marginBottom: 6 }}>Earned</div>
-          <div className="serif tnum" style={{ fontSize: 22, color: 'var(--mint)' }}>
-            {trackedThisMonth > 0 ? `≈ AED ${Math.round(trackedThisMonth).toLocaleString()}` : '—'}
+          <div className="serif tnum" style={{ fontSize: 22, color: 'var(--ink)' }}>
+            {trackedThisMonth > 0 ? approxAED(trackedThisMonth) : '—'}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>this month so far</div>
         </div>
@@ -534,14 +535,14 @@ function HomeForward() {
         }}>
           <div className="smallcaps" style={{ fontSize: 10, marginBottom: 6 }}>Left to spend</div>
           <div className="serif tnum" style={{ fontSize: 22, color: 'var(--pine)' }}>
-            {`AED ${Math.max(0, Math.round(plan.discretionary - plan.thisMonthExpenses)).toLocaleString()}`}
+            {money(Math.max(0, Math.round(plan.discretionary - plan.thisMonthExpenses)))}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>after expenses</div>
         </div>
       </div>
 
       {/* Afford check */}
-      <Link className="rise" href="/afford" style={{
+      <Link className="rise focus-ring" href="/afford" style={{
         ...D(4),
         display: 'flex', alignItems: 'center', gap: 13, textDecoration: 'none',
         background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)',
@@ -649,7 +650,7 @@ export default function DashboardPage() {
         margin: '0 auto',
         minHeight: '100dvh',
         background: 'var(--bg)',
-        paddingBottom: 80,
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
         transition: 'background 0.5s ease',
       }}
     >
@@ -660,7 +661,7 @@ export default function DashboardPage() {
           marginBottom: 16, minHeight: 34,
         }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <Link href="/profile" aria-label="Your profile" style={{
+            <Link href="/profile" aria-label="Your profile" className="focus-ring" style={{
               width: 36, height: 36, borderRadius: '50%',
               background: 'var(--pine)', color: 'var(--on-pine)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
