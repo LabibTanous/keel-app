@@ -389,6 +389,132 @@ export function computeRunway(bufferBalance: number, essentials: number): number
   return Math.round((bufferBalance / essentials) * 10) / 10;
 }
 
+// ── Accumulating virtual pots ──────────────────────────────────────────────────
+// Keel as a "distribution layer": each RECEIVED deposit splits into pots that
+// accumulate a running balance over time (Bills / Tax / Zakat / Buffer / Goals /
+// Spending). PURELY ADDITIVE — these never feed back into computeAllocation /
+// computePaycheck / computeRunway / liveZakatableWealth. The pot ledger is a
+// PARALLEL VIRTUAL view: money is set aside in-app only, never a real transfer.
+//
+// Reconciliation rule: nothing may ever sum `bufferBalance + pots.buffer`. Runway
+// and Zakat keep reading profile.bufferBalance; the Buffer pot is merely SEEDED
+// from bufferBalance and then diverges as a projection.
+
+export type PotKind = 'bills' | 'tax' | 'zakat' | 'buffer' | 'goals' | 'spending';
+
+export interface PotBalances {
+  bills: number;
+  tax: number;
+  zakat: number;
+  buffer: number;
+  goals: number;
+  spending: number;
+}
+
+/** Absolute AED assigned to each pot from a single routed deposit. */
+export type PotSplit = PotBalances;
+/** Fractions of the paycheck per pot; sum ≈ 1 (spending is the residual). */
+export type PotRatios = PotBalances;
+
+export const EMPTY_POT_BALANCES: PotBalances = {
+  bills: 0, tax: 0, zakat: 0, buffer: 0, goals: 0, spending: 0,
+};
+
+export const POT_KINDS: PotKind[] = ['bills', 'tax', 'zakat', 'buffer', 'goals', 'spending'];
+
+export type PotEvent =
+  | { kind: 'route'; id: string; date: string; amountAED: number; split: PotSplit;
+      ccy?: string; srcAmount?: number; note?: string }
+  | { kind: 'withdraw'; id: string; date: string; amountAED: number; pot: PotKind;
+      category?: string; note?: string }
+  | { kind: 'adjust'; id: string; date: string; pot: PotKind; delta: number;
+      reason: 'reconcile' | 'manual'; note?: string };
+
+export interface PotState {
+  version: 1;
+  seed: PotBalances;   // opening balances (buffer seed only — see reconciliation rule)
+  events: PotEvent[];  // append-only, chronological
+}
+
+export function emptyPotState(bufferSeed = 0): PotState {
+  return { version: 1, seed: { ...EMPTY_POT_BALANCES, buffer: bufferSeed }, events: [] };
+}
+
+/**
+ * Split ratios derived from the anchored monthly allocation: each pot is its share
+ * of the paycheck, and SPENDING is the residual (1 − Σothers) — mirroring how the
+ * engine already makes spending/discretionary the leftover. Because every fraction
+ * is `allocation.X / paycheck`, the pot split can never contradict the allocation
+ * the 9,750 anchor produces.
+ */
+export function deriveRatios(
+  allocation: Allocation,
+  monthlyGoalContrib: number,
+  paycheck: number,
+): PotRatios {
+  if (paycheck <= 0) return { ...EMPTY_POT_BALANCES, spending: 1 };
+  const bills = allocation.rentAndBills / paycheck;
+  const tax = allocation.tax / paycheck;
+  const zakat = allocation.zakat / paycheck;
+  const buffer = allocation.buffer / paycheck;
+  // Goals are carved out of spending (store already caps monthlyGoalContrib ≤ 40%
+  // of spending), so they can't exceed the spending slice.
+  const goals = Math.min(allocation.spending, Math.max(0, monthlyGoalContrib)) / paycheck;
+  const spending = Math.max(0, 1 - bills - tax - zakat - buffer - goals);
+  return { bills, tax, zakat, buffer, goals, spending };
+}
+
+/**
+ * Split one routed deposit by ratios. Pots are filled greedily in priority order
+ * (bills → tax → zakat → buffer → goals), each capped by what's left, and SPENDING
+ * takes the remainder. This guarantees the split sums EXACTLY to the deposit and
+ * every pot stays ≥ 0 — even for a degenerate allocation whose ratios sum to > 1
+ * (e.g. essentials above a sustainable paycheck), where spending simply lands at 0.
+ */
+const SPLIT_ORDER: Exclude<PotKind, 'spending'>[] = ['bills', 'tax', 'zakat', 'buffer', 'goals'];
+
+export function splitDeposit(amountAED: number, r: PotRatios): PotSplit {
+  const split: PotSplit = { ...EMPTY_POT_BALANCES };
+  let remaining = Math.max(0, amountAED);
+  for (const k of SPLIT_ORDER) {
+    const want = Math.round(amountAED * r[k]);
+    const give = Math.max(0, Math.min(want, remaining));
+    split[k] = give;
+    remaining -= give;
+  }
+  split.spending = remaining; // residual — absorbs rounding, always ≥ 0, exact sum
+  return split;
+}
+
+/**
+ * Deterministic fold of the event ledger into per-pot balances.
+ *   balance = seed + Σ route.split − Σ withdraw ± Σ adjust
+ * Withdrawals may drive a pot negative — an honest "overdrawn" state the UI can flag.
+ */
+export function foldPots(events: PotEvent[], seed: PotBalances = EMPTY_POT_BALANCES): PotBalances {
+  const b: PotBalances = { ...seed };
+  for (const e of events) {
+    if (e.kind === 'route') {
+      b.bills += e.split.bills;
+      b.tax += e.split.tax;
+      b.zakat += e.split.zakat;
+      b.buffer += e.split.buffer;
+      b.goals += e.split.goals;
+      b.spending += e.split.spending;
+    } else if (e.kind === 'withdraw') {
+      b[e.pot] -= e.amountAED;
+    } else {
+      b[e.pot] += e.delta;
+    }
+  }
+  return b;
+}
+
+/** Sum of all pot balances — used for invariant checks and "total set aside" UI. */
+export function potTotal(b: PotBalances): number {
+  return b.bills + b.tax + b.zakat + b.buffer + b.goals + b.spending;
+}
+
 /**
  * scenario G3 — live zakatable wealth, re-derived each compute (not a frozen
  * onboarding snapshot). Tracks the buffer as it grows. EXCLUDES illiquid property;

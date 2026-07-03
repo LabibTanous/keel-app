@@ -364,7 +364,7 @@ export function ProfileClient() {
             <div>
               <div className="serif" style={{ fontSize: 23, color: 'var(--ink)', lineHeight: 1.1 }}>Your profile</div>
               <div style={{ fontSize: 13.5, color: 'var(--muted)', marginTop: 3 }}>
-                {regionLabel} · {plan.paycheck.toLocaleString('en-US')} AED/mo paycheck
+                {regionLabel} · {plan.paycheck.toLocaleString('en-US')} AED/mo to spend
               </div>
             </div>
           </div>

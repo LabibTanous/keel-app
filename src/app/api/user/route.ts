@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getAllUserData, saveFullProfile, saveGoals, saveBigPayments, saveExpenses } from "@/lib/db"
+import { getAllUserData, saveFullProfile, saveGoals, saveBigPayments, saveExpenses, savePots } from "@/lib/db"
 
-const EMPTY_USER_DATA = { profileJson: null, goalsJson: null, bigPaymentsJson: null, expensesJson: null }
+const EMPTY_USER_DATA = { profileJson: null, goalsJson: null, bigPaymentsJson: null, expensesJson: null, potsJson: null }
 
 export async function GET() {
   try {
@@ -39,6 +39,9 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.expensesJson === "string") {
       ops.push(saveExpenses(session.user.id, body.expensesJson))
+    }
+    if (typeof body.potsJson === "string") {
+      ops.push(savePots(session.user.id, body.potsJson))
     }
 
     if (ops.length === 0) {

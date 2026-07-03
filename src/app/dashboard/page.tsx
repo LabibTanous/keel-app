@@ -9,7 +9,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePlan } from '@/lib/store';
-import { PAY_STATUS, money, moneyK, amt, Card, Disclaimer } from '@/components/keel/ui';
+import { PAY_STATUS, money, moneyK, amt, Card, Disclaimer, Pot, POT_META, POT_KINDS } from '@/components/keel/ui';
+import type { PotKind } from '@/lib/engine';
 import { TenseToggle } from '@/components/keel/TenseToggle';
 import { Dock } from '@/components/keel/Dock';
 import { IconAfford } from '@/components/keel/icons';
@@ -206,111 +207,117 @@ function RangeBand({
   );
 }
 
-// ── Allocation section ───────────────────────────────────────────────────────
+// ── Pots section ─────────────────────────────────────────────────────────────
+// The distribution layer, made visible: each received deposit splits into pots
+// that accumulate. Bills are "covered first" (paid monthly, not a growing balance);
+// Tax / Zakat / Buffer / Goals accumulate; Spending is the drawable pot.
 
-function SubLine({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 2 }}>
-      <span style={{ color: 'var(--muted)', fontSize: 13 }}>↳</span>
-      <span style={{ flex: 1, fontSize: 13.5, color: strong ? 'var(--ink)' : 'var(--muted)', fontWeight: strong ? 600 : 400 }}>{label}</span>
-      <span className="tnum" style={{ fontSize: 14, color: strong ? 'var(--ink)' : 'var(--muted)' }}>{money(value)}</span>
-    </div>
+function PotsSection() {
+  const { plan, profile } = usePlan();
+  const { allocation, paycheck, pots } = plan;
+  const zakatOn = profile.zakatOn && allocation.zakat > 0;
+
+  // Monthly routing target per pot (absolute AED; mirrors deriveRatios, sums to paycheck).
+  const goalsTarget = Math.min(allocation.spending, plan.monthlyGoalContrib);
+  const spendingTarget = Math.max(
+    0,
+    paycheck - allocation.rentAndBills - allocation.tax - allocation.zakat - allocation.buffer - goalsTarget,
   );
-}
+  const monthlyTargets: Record<PotKind, number> = {
+    bills: allocation.rentAndBills,
+    tax: allocation.tax,
+    zakat: allocation.zakat,
+    buffer: allocation.buffer,
+    goals: goalsTarget,
+    spending: spendingTarget,
+  };
 
-function AllocationSection({
-  paycheck, rentAndBills, tax, zakat, zakatOn, buffer, spending,
-  bigPaymentReserve, bigPaymentNeeded, goalContrib, discretionary, hasBigPayments,
-}: {
-  paycheck: number;
-  rentAndBills: number;
-  tax: number;
-  zakat: number;
-  zakatOn: boolean;
-  buffer: number;
-  spending: number;
-  bigPaymentReserve: number;
-  bigPaymentNeeded: number;
-  goalContrib: number;
-  discretionary: number;
-  hasBigPayments: boolean;
-}) {
-  const buckets: [string, number, string][] = (zakatOn && zakat > 0) ? [
-    ['Rent & bills',    rentAndBills, 'var(--pine)'],
-    ['Tax set-aside',   tax,          'var(--gold)'],
-    ['Zakat set-aside', zakat,        'var(--zakat)'],
-    ['Runway buffer',   buffer,       'var(--mint)'],
-    ['Spending',        spending,     'var(--clay)'],
-  ] : [
-    ['Rent & bills',  rentAndBills, 'var(--pine)'],
-    ['Tax set-aside', tax,          'var(--gold)'],
-    ['Runway buffer', buffer,       'var(--mint)'],
-    ['Spending',      spending,     'var(--clay)'],
-  ];
+  // Full split shown in the proportion bar; Bills is a covered-first line, the rest
+  // are accumulating pots (Spending drawable).
+  const barKinds = POT_KINDS.filter((k) => {
+    if (k === 'zakat') return zakatOn;
+    if (k === 'tax') return monthlyTargets.tax > 0;
+    if (k === 'goals') return monthlyTargets.goals > 0 || pots.balances.goals > 0;
+    return true;
+  });
+  const accumulating: PotKind[] = ['tax', 'zakat', 'buffer', 'goals'].filter((k) => {
+    if (k === 'zakat') return zakatOn;
+    if (k === 'tax') return monthlyTargets.tax > 0 || pots.balances.tax > 0;
+    if (k === 'goals') return monthlyTargets.goals > 0 || pots.balances.goals > 0;
+    return true;
+  }) as PotKind[];
+  const barTotal = barKinds.reduce((s, k) => s + monthlyTargets[k], 0) || paycheck || 1;
 
-  const total = buckets.reduce((s, b) => s + b[1], 0) || paycheck || 1;
+  const hasBigPayments = plan.bigPayments.length > 0;
+  const bigNeeded = plan.monthlyBigPaymentReserveNeeded;
+  const bigReserve = plan.monthlyBigPaymentReserve;
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-        <span className="smallcaps">Where it goes</span>
-        <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>assigned before it arrives</span>
+        <span className="smallcaps">Your pots</span>
+        <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>split before it lands</span>
       </div>
 
-      {/* proportion bar */}
-      <div style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', gap: 2, marginBottom: 18 }}>
-        {buckets.map(([n, v, c]) => (
-          <div key={n} style={{ width: `${(v / total) * 100}%`, background: c }} />
+      {/* proportion bar — the whole split at a glance */}
+      <div style={{ display: 'flex', height: 14, borderRadius: 7, overflow: 'hidden', gap: 2, marginBottom: 16 }}>
+        {barKinds.map((k) => (
+          <div key={k} style={{ width: `${(monthlyTargets[k] / barTotal) * 100}%`, background: POT_META[k].color }} />
         ))}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-        {buckets.map(([n, v, c]) => (
-          <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 3, background: c, flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)' }}>{n}</span>
-            <span className="serif tnum" style={{ fontSize: 16.5, color: 'var(--ink)' }}>{money(v)}</span>
-          </div>
+      {/* Bills — covered first (monthly, not an accumulating balance) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 11, padding: '11px 0',
+        borderBottom: '1px solid var(--hairline)', marginBottom: 6,
+      }}>
+        <span style={{ width: 9, height: 9, borderRadius: 3, background: POT_META.bills.color, flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)' }}>Bills</span>
+        <span style={{ fontSize: 12, color: 'var(--muted)', marginRight: 8 }}>covered first</span>
+        <span className="serif tnum" style={{ fontSize: 16.5, color: 'var(--ink)' }}>{money(monthlyTargets.bills)}<span style={{ fontSize: 12, color: 'var(--muted)' }}>/mo</span></span>
+      </div>
+
+      {/* Accumulating set-aside pots */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {accumulating.map((k) => (
+          <Pot key={k} kind={k} balance={pots.balances[k]} monthlyTarget={monthlyTargets[k]} style={{ padding: '7px 0' }} />
         ))}
       </div>
 
-      {/* How the Spending pool splits — makes saving for goals & big payments visible */}
-      {(bigPaymentReserve > 0 || goalContrib > 0) && (
-        <div style={{
-          marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)',
-          display: 'flex', flexDirection: 'column', gap: 9,
-        }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.04em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-            Of that spending, set aside
-          </div>
-          {bigPaymentReserve > 0 && (
-            <SubLine label="Big payments fund" value={bigPaymentReserve} />
-          )}
-          {goalContrib > 0 && (
-            <SubLine label="Saving goals" value={goalContrib} />
-          )}
-          <SubLine label="Free to spend" value={discretionary} strong />
+      {/* Spending — the drawable pot, emphasized */}
+      <div style={{
+        marginTop: 10, padding: '13px 14px', borderRadius: 14,
+        background: 'var(--pine-soft)', border: '1px solid var(--hairline)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--pine)', color: 'var(--on-pine)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--on-pine)' }} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)' }}>Spending</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>Yours to spend · {money(monthlyTargets.spending)}/mo</div>
         </div>
-      )}
+        <div className="serif tnum" style={{ fontSize: 18, color: 'var(--pine)' }}>{money(Math.max(0, pots.balances.spending))}</div>
+      </div>
 
       {/* Honest gap: payments logged but the plan can't fully fund the set-aside */}
-      {hasBigPayments && bigPaymentNeeded > bigPaymentReserve && (
+      {hasBigPayments && bigNeeded > bigReserve && (
         <div style={{
           marginTop: 14, padding: '12px 14px', borderRadius: 12,
           background: 'var(--clay-soft)', border: '1px solid var(--clay)',
           fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)',
         }}>
-          Your big payments need <strong>≈{money(bigPaymentNeeded)}/mo</strong> set aside to be ready in time.
-          {bigPaymentReserve > 0
-            ? <> Your plan can spare <strong>{money(bigPaymentReserve)}</strong> — raise your paycheck or trim fixed costs to close the gap.</>
+          Your big payments need <strong>≈{money(bigNeeded)}/mo</strong> set aside to be ready in time.
+          {bigReserve > 0
+            ? <> Your plan can spare <strong>{money(bigReserve)}</strong> — raise your paycheck or trim fixed costs to close the gap.</>
             : <> There&apos;s nothing free to set aside at this paycheck — raise it, trim fixed costs, or push a due date out.</>}
         </div>
       )}
 
       <Disclaimer style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--hairline)' }}>
         {zakatOn
-          ? 'Tax and Zakat set-asides are estimates you can refine in Profile — not tax or financial advice.'
-          : 'Tax set-aside is an estimate you can refine in Profile — not tax or financial advice.'}
+          ? 'Pots are set aside in-app, not moved between bank accounts. Tax and Zakat figures are estimates you can refine in Profile — not tax or financial advice.'
+          : 'Pots are set aside in-app, not moved between bank accounts. Tax figures are estimates you can refine in Profile — not tax or financial advice.'}
       </Disclaimer>
     </div>
   );
@@ -381,7 +388,7 @@ const D = (i: number): React.CSSProperties => ({ animationDelay: `${i * 80}ms` }
 
 function HomeForward() {
   const { plan, profile } = usePlan();
-  const { paycheck, allocation, trackedThisMonth } = plan;
+  const { paycheck, trackedThisMonth } = plan;
 
   const today = new Date();
   const dayOfMonth = today.getDate();
@@ -429,7 +436,7 @@ function HomeForward() {
         borderRadius: 'var(--r-card)', padding: '22px var(--pad) 24px',
         boxShadow: 'var(--shadow)',
       }}>
-        <div className="smallcaps" style={{ color: 'var(--hero-ink)', opacity: 0.7 }}>Paycheck</div>
+        <div className="smallcaps" style={{ color: 'var(--hero-ink)', opacity: 0.7 }}>Yours to spend</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
           <span className="serif tnum" style={{ fontSize: 54, fontWeight: 500, lineHeight: 0.95, letterSpacing: -1 }}>
             <span style={{ fontSize: 23, fontWeight: 400, opacity: 0.6, marginRight: 8, letterSpacing: 0 }}>AED</span>
@@ -438,7 +445,7 @@ function HomeForward() {
           <span style={{ fontSize: 17, opacity: 0.7 }}>/mo</span>
         </div>
         <p style={{ margin: '12px 0 0', fontSize: 14.5, opacity: 0.82 }}>
-          Your steady paycheck
+          What&apos;s left after Keel splits your income — tax, buffer and goals already set aside.
           {plan.range.provisional && (
             <span style={{
               display: 'inline-block', marginLeft: 8, fontSize: 11, fontWeight: 600,
@@ -447,6 +454,11 @@ function HomeForward() {
             }}>EARLY ESTIMATE</span>
           )}
         </p>
+        {plan.pots.routedThisMonth > 0 && (
+          <p style={{ margin: '8px 0 0', fontSize: 12.5, opacity: 0.7 }}>
+            {money(plan.pots.routedThisMonth)} routed &amp; split this month
+          </p>
+        )}
         <Link href="/paycheck" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16,
           color: 'var(--hero-ink)', textDecoration: 'none', fontSize: 13, fontWeight: 700,
@@ -495,23 +507,10 @@ function HomeForward() {
         </div>
       )}
 
-      {/* Where it goes — compact allocation */}
+      {/* Your pots — the split, made visible */}
       <div className="rise" style={D(2)}>
         <Card>
-          <AllocationSection
-            paycheck={paycheck}
-            rentAndBills={allocation.rentAndBills}
-            tax={allocation.tax}
-            zakat={allocation.zakat}
-            zakatOn={profile.zakatOn}
-            buffer={allocation.buffer}
-            spending={allocation.spending}
-            bigPaymentReserve={plan.monthlyBigPaymentReserve}
-            bigPaymentNeeded={plan.monthlyBigPaymentReserveNeeded}
-            goalContrib={plan.monthlyGoalContrib}
-            discretionary={plan.discretionary}
-            hasBigPayments={plan.bigPayments.length > 0}
-          />
+          <PotsSection />
         </Card>
       </div>
 
@@ -592,7 +591,7 @@ function HomeBack() {
         background: 'var(--surface)', borderRadius: 12, padding: '18px var(--pad)',
         border: '1px solid var(--hairline)',
       }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: 0.02 }}>Paycheck allocation — {currentMonth}</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: 0.02 }}>How this month split — {currentMonth}</div>
         <div className="tnum" style={{ fontSize: 38, fontWeight: 700, color: 'var(--ink)', marginTop: 4, letterSpacing: -0.5 }}>
           {money(total)}
         </div>

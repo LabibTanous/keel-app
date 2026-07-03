@@ -46,3 +46,4 @@ KEEL_BUILD_LOG.md
 .agents/
 .claude/
 .reactdoctorrc
+.env*

@@ -145,12 +145,12 @@ export function PaycheckClient() {
             <path d="M9 2 2 9l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
-        <div className="serif" style={{ fontSize: 24, color: 'var(--ink)' }}>Paycheck</div>
+        <div className="serif" style={{ fontSize: 24, color: 'var(--ink)' }}>Spending pot</div>
       </div>
 
       <div style={{ padding: '0 18px 6px', marginTop: -2 }}>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--muted)' }}>
-          The amount you pay yourself every month — steady, whatever your work brings in.
+          What&apos;s left each month after Keel splits your income — steady, whatever your work brings in.
         </p>
       </div>
 
@@ -320,7 +320,7 @@ export function PaycheckClient() {
               <div className="rise" style={{ animationDelay: '195ms' }}>
                 <Card style={{ background: 'var(--pine-soft)', boxShadow: 'inset 3px 0 0 var(--pine)' }}>
                   <div className="smallcaps" style={{ color: 'var(--pine)', marginBottom: 12 }}>
-                    Your savings plan this month
+                    Set aside from your pots this month
                   </div>
 
                   {/* Per-goal rows */}

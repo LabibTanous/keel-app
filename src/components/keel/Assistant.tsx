@@ -31,14 +31,14 @@ interface Message {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const INITIAL_MESSAGE = "Hey — I'm your Keel adviser. Ask me anything about your money: your paycheck, what's coming, or your runway.";
+const INITIAL_MESSAGE = "Hey — I'm your Keel adviser. Ask me anything about your money: how your income splits, your pots, what's coming, or your runway.";
 
 const ASST_REFUSAL =
-  "That’s outside what I can advise on — I can’t recommend specific investments like stocks or crypto. What I can do is help you keep a healthy buffer and a steady paycheck, so when you do make those calls, it’s with money you can spare.";
+  "That’s outside what I can advise on — I can’t recommend specific investments like stocks or crypto. What I can do is help you keep a healthy buffer and enough set aside, so when you do make those calls, it’s with money you can spare.";
 
 const ASST_SUGGESTIONS = [
   "What’s my outlook?",
-  "Should I raise my paycheck?",
+  "How much have I set aside?",
   "When will I hit my goal?",
   "Can I afford a vacation?",
 ];
@@ -53,21 +53,23 @@ function isSpecificInvestmentPick(q: string): boolean {
 // ── Build system context from live plan ───────────────────────────────────────
 
 function buildContext(plan: Plan): string {
-  const { range, paycheck, allocation, runway, outlook, trackedThisMonth, interpretations, volatilityTrend: volTrend } = plan;
+  const { range, paycheck, allocation, runway, outlook, trackedThisMonth, interpretations, volatilityTrend: volTrend, pots } = plan;
   const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
   const lines: string[] = [
     "You are Keel’s in-app financial adviser for a freelancer with irregular income.",
+    "Keel is a distribution layer: when income is received it automatically SPLITS into pots (Bills, Tax, Zakat, Buffer, Goals, Spending) before it lands. Pots are set aside IN-APP only — never a real bank transfer. Say 'set aside', not 'moved' or 'transferred'.",
     "Coaching stance: reflect what the numbers mean, don’t direct or lecture. Be warm and brief — 2 to 4 sentences. No jargon, no hype, never scolding. All money is in AED.",
     "You know the user’s full financial profile — reference actual numbers when answering.",
     "You CAN discuss general investment strategies (broad asset classes, diversification principles, emergency fund sizing, general allocation frameworks) — just not specific stock picks, individual crypto coins, or active trading advice.",
     "When answering spending or saving questions, factor in the user’s actual goals and upcoming payments.",
     "",
     "The user’s current plan:",
-    `- Steady paycheck they pay themselves: AED ${fmt(paycheck)} / month.`,
-    `- Why this paycheck: ${interpretations.paycheckWhy}`,
+    `- Spending pot (what's left to spend after the split): AED ${fmt(paycheck)} / month.`,
+    `- Why this amount: ${interpretations.paycheckWhy}`,
     `- Honest income range: lean AED ${fmt(range.lean)} / likely AED ${fmt(range.likely)} / strong AED ${fmt(range.strong)}. ${range.provisional ? "Provisional — fewer than 3 months of data." : "Based on real history."}`,
-    `- Where the paycheck goes: Rent & bills ${fmt(allocation.rentAndBills)}, Tax set-aside ${fmt(allocation.tax)}, Runway buffer ${fmt(allocation.buffer)}, Spending ${fmt(allocation.spending)}.`,
+    `- Monthly split of each deposit: Bills ${fmt(allocation.rentAndBills)}, Tax ${fmt(allocation.tax)}, Zakat ${fmt(allocation.zakat)}, Buffer ${fmt(allocation.buffer)}, Spending ${fmt(allocation.spending)}.`,
+    `- Pot balances set aside so far: Tax AED ${fmt(pots.balances.tax)}, Zakat AED ${fmt(pots.balances.zakat)}, Buffer AED ${fmt(pots.balances.buffer)}, Goals AED ${fmt(pots.balances.goals)}, Spending AED ${fmt(pots.balances.spending)}.`,
     `- Buffer runway: ${runway} months. ${interpretations.runwayMeaning}`,
     `- Income tracked so far this month: AED ${fmt(trackedThisMonth)}.`,
     `- Outlook: ${outlook}. ${interpretations.outlookMeaning}`,

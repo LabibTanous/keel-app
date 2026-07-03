@@ -558,12 +558,12 @@ function DoneStep() {
       </div>
       <div className="serif" style={{ fontSize: 24, color: 'var(--ink)', marginBottom: 8 }}>Your picture&apos;s ready</div>
       <p style={{ margin: '0 auto 24px', maxWidth: 260, fontSize: 14, lineHeight: 1.5, color: 'var(--muted)' }}>
-        Keel now sees your income, costs and what&apos;s coming. Your steady paycheck is ready to set.
+        Keel now sees your income, costs and what&apos;s coming. See how each deposit will split — and what&apos;s left to spend.
       </p>
       <Link href="/paycheck" style={{
         display: 'inline-block', padding: '14px 26px', borderRadius: 999, textDecoration: 'none',
         background: 'var(--pine)', color: 'var(--on-pine)', fontSize: 15, fontWeight: 700,
-      }}>Set your paycheck</Link>
+      }}>See your split</Link>
     </div>
   );
 }

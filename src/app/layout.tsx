@@ -6,11 +6,11 @@ import { GlobalOverlays } from "@/components/keel/GlobalOverlays"
 import { ConvexClientProvider } from "@/components/ConvexClientProvider"
 
 export const metadata: Metadata = {
-  title: "Keel — Financial Stability for Irregular Income",
-  description: "Budget smarter when your income changes every month. Income smoothing, tax reserve, runway tracker. Built for freelancers, gig workers, and creators worldwide.",
+  title: "Keel — Your income, split before it lands",
+  description: "The distribution layer for freelance income. When money comes in, Keel automatically sets aside tax, buffer, Zakat and goals — so what's left is truly yours to spend. Built for freelancers in the UAE & GCC.",
   openGraph: {
     title: "Keel",
-    description: "Keep your finances on an even keel — even when income isn't.",
+    description: "Your income, split before it lands. Tax, buffer and goals set aside automatically — what's left is yours.",
     type: "website",
   },
   icons: {

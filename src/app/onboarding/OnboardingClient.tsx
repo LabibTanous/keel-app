@@ -1340,7 +1340,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
           color: 'var(--muted)',
         }}
       >
-        From what you&apos;ve entered, Keel has a steady paycheck to start you off.
+        Here&apos;s how your income will split when it lands — with what&apos;s left as yours to spend.
       </p>
       <Card style={{ textAlign: 'left', padding: '18px var(--pad)' }}>
         <div style={{ marginBottom: 10 }}>
@@ -1386,9 +1386,9 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
         {suggestedPaycheck > 0 && (
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[
-              { label: 'Rent & bills', val: previewAlloc.rentAndBills },
-              { label: 'Runway buffer', val: previewAlloc.buffer },
-              { label: 'Spending', val: previewAlloc.spending },
+              { label: 'Bills', val: previewAlloc.rentAndBills },
+              { label: 'Buffer pot', val: previewAlloc.buffer },
+              { label: 'Yours to spend', val: previewAlloc.spending },
             ].map(({ label, val }) => (
               <div
                 key={label}

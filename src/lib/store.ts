@@ -7,7 +7,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
-import type { IncomeItem, Profile, IncomeRange, Allocation, Signal, GoalTradeoff, IncomingPaymentHint, Interpretations } from './engine';
+import type { IncomeItem, Profile, IncomeRange, Allocation, Signal, GoalTradeoff, IncomingPaymentHint, Interpretations, PotState, PotBalances, PotRatios } from './engine';
 import {
   toAED,
   computeRangeFromIncomes,
@@ -21,9 +21,39 @@ import {
   goalTradeoff,
   liveZakatableWealth,
   bigPaymentMonthly,
+  deriveRatios,
+  splitDeposit,
+  foldPots,
+  potTotal,
+  emptyPotState,
 } from './engine';
 
-export type { GoalTradeoff, IncomingPaymentHint, Interpretations };
+export type { GoalTradeoff, IncomingPaymentHint, Interpretations, PotState, PotBalances, PotRatios };
+
+// ── Pots (accumulating virtual distribution ledger) ─────────────────────────────
+
+/** Derived pot view exposed on the Plan — balances (accumulated) + ratios (this-month split). */
+export interface PotView {
+  balances: PotBalances;
+  ratios: PotRatios;
+  seed: PotBalances;
+  total: number;             // sum of all pot balances set aside
+  routedThisMonth: number;   // AED routed (received & split) so far this calendar month
+  bufferReconcileDelta: number; // pots.buffer − profile.bufferBalance (virtual vs actual)
+}
+
+let potSeq = 0;
+/** Unique id for a pot ledger event (client-side; order-stable within a session). */
+function potEventId(): string {
+  potSeq += 1;
+  return `${Date.now().toString(36)}-${potSeq.toString(36)}`;
+}
+
+/** Forward-only migration: seed the Buffer pot at the current bufferBalance, start
+ *  accumulating from today. No history replay (would double-count buffer). */
+export function migratePots(profile: Profile): PotState {
+  return emptyPotState(profile.bufferBalance);
+}
 import { DEMO_PROFILE, EMPTY_PROFILE } from './demo-seed';
 import type { BigPayment } from './demo-seed';
 
@@ -69,6 +99,7 @@ export interface Plan {
   monthlyBigPaymentReserveNeeded: number;
   discretionary: number;
   thisMonthExpenses: number;
+  pots: PotView;
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -89,7 +120,7 @@ export interface PlanStore {
 
 // ── Pure plan derivation ──────────────────────────────────────────────────────
 
-export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: BigPayment[] = [], userGoals: UserGoal[] = [], expenses: ExpenseItem[] = []): Plan {
+export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: BigPayment[] = [], userGoals: UserGoal[] = [], expenses: ExpenseItem[] = [], pots?: PotState): Plan {
   // Lumpy/project earners get an annualised range (FIX N3) — see computeRangeFromIncomes.
   // Monthly earners delegate to the unchanged computeRange path.
   const range = computeRangeFromIncomes(profile.incomes, profile.incomePattern);
@@ -202,6 +233,24 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     .filter(e => e.date.startsWith(currentMonth))
     .reduce((s, e) => s + toAED(e.amount, e.currency), 0);
 
+  // ── Pots: accumulated balances (fold of the ledger) + this-month split ratios ──
+  // Parallel virtual view. NEVER summed with profile.bufferBalance — runway/zakat
+  // above already read bufferBalance directly; the Buffer pot is seeded from it.
+  const potState = pots ?? migratePots(profile);
+  const potBalances = foldPots(potState.events, potState.seed);
+  const potRatios = deriveRatios(allocation, monthlyGoalContrib, rawPaycheck);
+  const routedThisMonth = potState.events
+    .filter((e): e is Extract<typeof e, { kind: 'route' }> => e.kind === 'route' && e.date.startsWith(currentMonth))
+    .reduce((s, e) => s + e.amountAED, 0);
+  const potsView: PotView = {
+    balances: potBalances,
+    ratios: potRatios,
+    seed: potState.seed,
+    total: potTotal(potBalances),
+    routedThisMonth,
+    bufferReconcileDelta: potBalances.buffer - profile.bufferBalance,
+  };
+
   return {
     range,
     paycheck: rawPaycheck,
@@ -223,6 +272,7 @@ export function computePlan(profile: Profile, trackedOverride = 0, bigPayments: 
     monthlyBigPaymentReserveNeeded,
     discretionary,
     thisMonthExpenses,
+    pots: potsView,
   };
 }
 
@@ -234,6 +284,7 @@ interface State {
   bigPayments: BigPayment[];
   userGoals: UserGoal[];
   expenses: ExpenseItem[];
+  pots: PotState;
 }
 
 type Action =
@@ -246,6 +297,7 @@ type Action =
   | { type: 'SET_USER_GOALS'; payload: UserGoal[] }
   | { type: 'ADD_EXPENSE'; payload: ExpenseItem }
   | { type: 'SET_EXPENSES'; payload: ExpenseItem[] }
+  | { type: 'SET_POTS'; payload: PotState }
   | { type: 'RESET' };
 
 function reducer(state: State, action: Action): State {
@@ -260,10 +312,37 @@ function reducer(state: State, action: Action): State {
       const additionalTracked = isThisMonth && isConfirmed
         ? toAED(action.payload.amount, action.payload.currency)
         : 0;
+
+      // Confirmed = RECEIVED → route it: split the deposit into pots using the split
+      // ratios as they stand BEFORE this deposit lands (so a windfall doesn't distort
+      // its own split via the paycheck it just moved).
+      let pots = state.pots;
+      if (isConfirmed) {
+        const pre = computePlan(state.profile, state.trackedThisMonth, state.bigPayments, state.userGoals, state.expenses, state.pots);
+        const amountAED = toAED(action.payload.amount, action.payload.currency);
+        const split = splitDeposit(amountAED, pre.pots.ratios);
+        pots = {
+          ...state.pots,
+          events: [
+            ...state.pots.events,
+            {
+              kind: 'route',
+              id: potEventId(),
+              date: action.payload.date,
+              amountAED,
+              split,
+              ccy: action.payload.currency,
+              srcAmount: action.payload.amount,
+            },
+          ],
+        };
+      }
+
       return {
         ...state,
         trackedThisMonth: state.trackedThisMonth + additionalTracked,
         profile: { ...state.profile, incomes: newIncomes },
+        pots,
       };
     }
     case 'ADD_BIG_PAYMENT':
@@ -280,11 +359,31 @@ function reducer(state: State, action: Action): State {
     case 'SET_USER_GOALS':
       return { ...state, userGoals: action.payload };
     case 'ADD_EXPENSE':
-      return { ...state, expenses: [...state.expenses, action.payload] };
+      return {
+        ...state,
+        expenses: [...state.expenses, action.payload],
+        // Spending pot is the drawable pot — an expense draws it down.
+        pots: {
+          ...state.pots,
+          events: [
+            ...state.pots.events,
+            {
+              kind: 'withdraw',
+              id: potEventId(),
+              date: action.payload.date,
+              amountAED: toAED(action.payload.amount, action.payload.currency),
+              pot: 'spending',
+              category: action.payload.category,
+            },
+          ],
+        },
+      };
     case 'SET_EXPENSES':
       return { ...state, expenses: action.payload };
+    case 'SET_POTS':
+      return { ...state, pots: action.payload };
     case 'RESET':
-      return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+      return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [], pots: emptyPotState(0) };
     default:
       return state;
   }
@@ -294,7 +393,7 @@ const STORAGE_KEY = 'keel_plan_state_v1';
 
 function loadState(): State {
   if (typeof window === 'undefined') {
-    return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+    return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [], pots: emptyPotState(0) };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -307,13 +406,15 @@ function loadState(): State {
           bigPayments: Array.isArray(parsed.bigPayments) ? parsed.bigPayments : [],
           userGoals: Array.isArray(parsed.userGoals) ? parsed.userGoals : [],
           expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+          // Existing users predate the pots ledger — migrate forward-only from their profile.
+          pots: parsed.pots && Array.isArray(parsed.pots.events) ? parsed.pots : migratePots(parsed.profile),
         };
       }
     }
   } catch {
     // Ignore parse errors — fall through to defaults
   }
-  return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] };
+  return { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [], pots: emptyPotState(0) };
 }
 
 function saveState(state: State): void {
@@ -332,7 +433,7 @@ const PlanContext = createContext<PlanStore | null>(null);
 export function PlanProvider({ children }: { children: React.ReactNode }) {
   // Always start with EMPTY_PROFILE so SSR and first client render match.
   // After mount, hydrate from localStorage to avoid React hydration mismatch.
-  const [state, dispatch] = useReducer(reducer, { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [] });
+  const [state, dispatch] = useReducer(reducer, { profile: EMPTY_PROFILE, trackedThisMonth: 0, bigPayments: [], userGoals: [], expenses: [], pots: emptyPotState(0) });
 
   // On first client mount, load persisted state (runs only in the browser)
   useEffect(() => {
@@ -342,6 +443,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     if (loaded.userGoals?.length) dispatch({ type: 'SET_USER_GOALS', payload: loaded.userGoals });
     if (loaded.bigPayments?.length) dispatch({ type: 'SET_BIG_PAYMENTS', payload: loaded.bigPayments });
     if (loaded.expenses?.length) dispatch({ type: 'SET_EXPENSES', payload: loaded.expenses });
+    if (loaded.pots) dispatch({ type: 'SET_POTS', payload: loaded.pots });
 
     // Convex is authoritative — hydrate all blobs if a session exists.
     fetch('/api/auth/session')
@@ -352,10 +454,11 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (!data) return;
+            let hydratedProfile: Profile | null = null;
             if (data.profileJson) {
               try {
                 const p = JSON.parse(data.profileJson) as Profile;
-                if (p?.incomes && Array.isArray(p.incomes)) dispatch({ type: 'SET_PROFILE', payload: p });
+                if (p?.incomes && Array.isArray(p.incomes)) { hydratedProfile = p; dispatch({ type: 'SET_PROFILE', payload: p }); }
               } catch { /* ignore */ }
             }
             if (data.goalsJson) {
@@ -366,6 +469,16 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
             }
             if (data.expensesJson) {
               try { dispatch({ type: 'SET_EXPENSES', payload: JSON.parse(data.expensesJson) }); } catch { /* ignore */ }
+            }
+            // Pots ledger: use the stored ledger, else migrate forward-only from the
+            // hydrated profile (existing Convex users predate the pots feature).
+            if (data.potsJson) {
+              try {
+                const ps = JSON.parse(data.potsJson) as PotState;
+                if (ps && Array.isArray(ps.events)) dispatch({ type: 'SET_POTS', payload: ps });
+              } catch { /* ignore */ }
+            } else if (hydratedProfile) {
+              dispatch({ type: 'SET_POTS', payload: migratePots(hydratedProfile) });
             }
           });
       })
@@ -389,13 +502,14 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
             goalsJson: JSON.stringify(state.userGoals),
             bigPaymentsJson: JSON.stringify(state.bigPayments),
             expensesJson: JSON.stringify(state.expenses),
+            potsJson: JSON.stringify(state.pots),
           }),
         });
       })
       .catch(() => {}); // Silently ignore failures
   }, [state]);
 
-  const plan = computePlan(state.profile, state.trackedThisMonth, state.bigPayments, state.userGoals, state.expenses);
+  const plan = computePlan(state.profile, state.trackedThisMonth, state.bigPayments, state.userGoals, state.expenses, state.pots);
 
   const store: PlanStore = {
     profile: state.profile,

@@ -160,6 +160,18 @@ export const saveExpenses = mutation({
   },
 });
 
+export const savePots = mutation({
+  args: { userId: v.string(), pots: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("keel_users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) return;
+    await ctx.db.patch(existing._id, { pots: args.pots });
+  },
+});
+
 export const getAllUserData = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
@@ -173,6 +185,7 @@ export const getAllUserData = query({
       goalsJson: row.goals ?? null,
       bigPaymentsJson: row.bigPayments ?? null,
       expensesJson: row.expenses ?? null,
+      potsJson: row.pots ?? null,
     };
   },
 });

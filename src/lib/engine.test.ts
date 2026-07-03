@@ -29,6 +29,14 @@ import {
   bigPaymentMonthly,
   assessGoal,
   estimateAnnualTax,
+  deriveRatios,
+  splitDeposit,
+  foldPots,
+  potTotal,
+  emptyPotState,
+  EMPTY_POT_BALANCES,
+  type PotEvent,
+  type PotBalances,
   CCY_RATES,
   FX_AS_OF,
   ASSUMED_PROFIT_MARGIN,
@@ -832,5 +840,84 @@ describe('Goal coaching — assessGoal (honest, no false hope)', () => {
     const a = assessGoal({ target: 100000, saved: 5000, currentMonthly: 500, capacityMonthly: 2000, suggestedTarget: RUNWAY });
     expect(a.verdict).toBe('slow');
     expect(a.monthsAtCapacity).toBe(Math.ceil(95000 / 2000)); // 48 — capacity rescues it
+  });
+});
+
+// ── Scenario P — accumulating virtual pots (split / fold / reconcile) ───────────
+// Pots are a PARALLEL VIRTUAL ledger derived from the anchored allocation. They are
+// purely additive: the 9,750 anchor and every allocation-sum test must stay green.
+const potSum = (b: PotBalances) =>
+  b.bills + b.tax + b.zakat + b.buffer + b.goals + b.spending;
+
+describe('Scenario P — pots split, fold & reconcile', () => {
+  // Demo allocation → ratios (zakat off, no tax → those pots are 0 for the anchor case)
+  const demoAlloc = computeAllocation(9750, DEMO_ESSENTIALS, 'AE', false, 0, DEMO_BUFFER, 3, 0, {});
+  const ratios = deriveRatios(demoAlloc, 0, 9750);
+
+  it('P1 ratios sum to ~1, spending is the residual, all ≥ 0', () => {
+    expect(ratios.bills + ratios.tax + ratios.zakat + ratios.buffer + ratios.goals + ratios.spending)
+      .toBeCloseTo(1, 6);
+    for (const v of Object.values(ratios)) expect(v).toBeGreaterThanOrEqual(0);
+    // spending is the residual, so it equals 1 − Σothers
+    expect(ratios.spending).toBeCloseTo(
+      1 - ratios.bills - ratios.tax - ratios.zakat - ratios.buffer - ratios.goals, 9,
+    );
+  });
+
+  it('P2 splitDeposit sums EXACTLY to the deposit across amounts (incl. FX-converted)', () => {
+    for (const amt of [9750, 21000, 150000, 1, 3673, Math.round(toAED(10000, 'USD'))]) {
+      expect(potSum(splitDeposit(amt, ratios))).toBe(amt);
+    }
+  });
+
+  it('P2b tight/near-zero-spending ratios: sum still exact and every pot ≥ 0', () => {
+    // essentials > paycheck-ish → bills/buffer dominate, spending ratio ≈ 0
+    const tightAlloc = computeAllocation(8000, 15000, 'AE', false, 0, 0, 3, 0, {});
+    const tight = deriveRatios(tightAlloc, 0, 8000);
+    const split = splitDeposit(20000, tight);
+    expect(potSum(split)).toBe(20000);
+    for (const v of Object.values(split)) expect(v).toBeGreaterThanOrEqual(0);
+  });
+
+  it('P3 foldPots total === seedTotal + routed − withdrawn ± adjust', () => {
+    const seed = { ...EMPTY_POT_BALANCES, buffer: DEMO_BUFFER };
+    const events: PotEvent[] = [
+      { kind: 'route', id: 'a', date: '2025-06-01', amountAED: 9750, split: splitDeposit(9750, ratios) },
+      { kind: 'route', id: 'b', date: '2025-07-01', amountAED: 21000, split: splitDeposit(21000, ratios) },
+      { kind: 'withdraw', id: 'c', date: '2025-07-05', amountAED: 1200, pot: 'spending' },
+      { kind: 'adjust', id: 'd', date: '2025-07-06', pot: 'buffer', delta: -500, reason: 'reconcile' },
+    ];
+    expect(potTotal(foldPots(events, seed))).toBe(DEMO_BUFFER + 9750 + 21000 - 1200 - 500);
+  });
+
+  it('P4 per-pot fold: buffer = seed + Σrouted.buffer; spending = Σrouted.spending', () => {
+    const seed = { ...EMPTY_POT_BALANCES, buffer: DEMO_BUFFER };
+    const r1 = splitDeposit(9750, ratios);
+    const r2 = splitDeposit(21000, ratios);
+    const b = foldPots([
+      { kind: 'route', id: 'a', date: 'd', amountAED: 9750, split: r1 },
+      { kind: 'route', id: 'b', date: 'd', amountAED: 21000, split: r2 },
+    ], seed);
+    expect(b.buffer).toBe(DEMO_BUFFER + r1.buffer + r2.buffer);
+    expect(b.spending).toBe(r1.spending + r2.spending);
+  });
+
+  it('P5 empty ledger folds to seed; withdraw draws only its pot (honest overdraw)', () => {
+    const seed = { ...EMPTY_POT_BALANCES, buffer: DEMO_BUFFER };
+    expect(foldPots([], seed)).toEqual(seed);
+    const b = foldPots([{ kind: 'withdraw', id: 'x', date: 'd', amountAED: 500, pot: 'spending' }], seed);
+    expect(b.spending).toBe(-500);   // overdrawn, surfaced honestly
+    expect(b.buffer).toBe(DEMO_BUFFER); // untouched
+  });
+
+  it('P6 reconcile: Buffer pot seeds at bufferBalance; runway still reads bufferBalance only', () => {
+    expect(emptyPotState(DEMO_BUFFER).seed.buffer).toBe(DEMO_BUFFER);
+    expect(foldPots([], emptyPotState(DEMO_BUFFER).seed).buffer).toBe(DEMO_BUFFER);
+    // engine buffer math is untouched by pots
+    expect(computeRunway(DEMO_BUFFER, DEMO_ESSENTIALS)).toBe(3.7);
+  });
+
+  it('P7 ANCHOR untouched — pots are additive (9,750 holds)', () => {
+    expect(computePaycheck(computeRangeFromIncomes(DEMO), DEMO_ESSENTIALS, DEMO_BUFFER)).toBe(9750);
   });
 });

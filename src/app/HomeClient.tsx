@@ -21,8 +21,8 @@ const STEPS = [
         <path d="M5 19h14" stroke="var(--pine)" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
       </svg>
     ),
-    title: 'Log what comes in',
-    body: 'Add invoices, gigs, and payments as they arrive.',
+    title: 'Money comes in',
+    body: 'Log an invoice, gig or payment as it arrives.',
   },
   {
     icon: (
@@ -32,8 +32,8 @@ const STEPS = [
         <circle cx="12" cy="12" r="3" fill="var(--pine)" />
       </svg>
     ),
-    title: 'Get a steady paycheck',
-    body: 'Keel sets a smooth monthly wage from your real history.',
+    title: 'It splits automatically',
+    body: 'Before it lands, Keel sets aside tax, buffer and goals.',
   },
   {
     icon: (
@@ -43,8 +43,8 @@ const STEPS = [
         <path d="M6 11h4M6 15h6M14 15h4" stroke="var(--pine)" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
       </svg>
     ),
-    title: 'Know what\'s ahead',
-    body: 'See your runway, big costs, and tax set-aside — all live.',
+    title: 'What\'s left is yours',
+    body: 'Spend the rest freely — the hard parts are already handled.',
   },
 ];
 
@@ -127,7 +127,7 @@ export function HomeClient(): React.ReactElement {
               fill="var(--muted)" fontSize={9} fontFamily="var(--font-ui)" fontWeight={600} letterSpacing={0.4}
               style={{ animation: 'k-fade 0.5s ease 1400ms both', opacity: 0 }}
             >
-              YOUR PAYCHECK
+              YOURS TO SPEND
             </text>
           </svg>
         </div>
@@ -137,10 +137,10 @@ export function HomeClient(): React.ReactElement {
           fontSize: 'clamp(32px, 9vw, 46px)', lineHeight: 1.06, color: 'var(--ink)',
           letterSpacing: -0.5, marginBottom: 10, animationDelay: '260ms',
         }}>
-          Money that looks forward.
+          Your income, split before it lands.
         </div>
         <p className="k-rise" style={{ margin: '0 0 28px', fontSize: 15, color: 'var(--muted)', animationDelay: '380ms' }}>
-          Calm. Steady. Yours.
+          Tax, buffer and goals set aside automatically. What&apos;s left is yours.
         </p>
 
         {/* ── How it works ── */}

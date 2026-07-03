@@ -12,6 +12,7 @@ export default defineSchema({
     goals: v.optional(v.string()),
     bigPayments: v.optional(v.string()),
     expenses: v.optional(v.string()),
+    pots: v.optional(v.string()),
     paycheckAmount: v.optional(v.number()),
     reserveBalance: v.optional(v.number()),
     logToken: v.optional(v.string()),

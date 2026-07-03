@@ -10,12 +10,33 @@
  */
 
 import React, { CSSProperties } from 'react';
+import { POT_KINDS } from '@/lib/engine';
+import type { PotKind, PotBalances } from '@/lib/engine';
 
 export const PAY_STATUS: Record<'set' | 'saving' | 'soon', { label: string; color: string }> = {
   set:    { label: 'Set aside', color: 'var(--mint)' },
   saving: { label: 'Saving',    color: 'var(--gold)' },
   soon:   { label: 'Not yet',   color: 'var(--clay)' },
 };
+
+// ── Pots (distribution-layer vocabulary) ────────────────────────────────────────
+// Money is set aside IN-APP only — a virtual split, never a real bank transfer.
+// Color mapping honors the theme: gold = goals, mint = buffer/positive, zakat = zakat,
+// spending = the primary pine "what's left is yours"; bills = neutral fixed obligation.
+
+export interface PotMeta { label: string; color: string; soft: string; blurb: string; }
+
+export const POT_META: Record<PotKind, PotMeta> = {
+  bills:    { label: 'Bills',    color: 'var(--muted)', soft: 'var(--surface-2)',                     blurb: 'Rent & essentials, covered first' },
+  tax:      { label: 'Tax',      color: 'var(--clay)',  soft: 'var(--clay-soft)',                     blurb: 'Set aside so filing season never stings' },
+  zakat:    { label: 'Zakat',    color: 'var(--zakat)', soft: 'var(--zakat-soft, rgba(46,110,107,0.12))', blurb: '2.5% of wealth, ready when due' },
+  buffer:   { label: 'Buffer',   color: 'var(--mint)',  soft: 'var(--mint-soft, rgba(47,163,116,0.12))',  blurb: 'Your runway — the cushion that carries lean months' },
+  goals:    { label: 'Goals',    color: 'var(--gold)',  soft: 'var(--gold-soft)',                     blurb: 'Quietly saving toward what you want' },
+  spending: { label: 'Spending', color: 'var(--pine)',  soft: 'var(--pine-soft)',                     blurb: "What's left — genuinely yours to spend" },
+};
+
+export { POT_KINDS };
+export type { PotKind, PotBalances };
 
 // ── Multi-currency ─────────────────────────────────────────────────────────────
 // Re-export from engine.ts so that this file is the one-stop shop for UI helpers.
@@ -265,5 +286,103 @@ export function Switch({ on, onClick }: SwitchProps): React.ReactElement {
         display: 'block',
       }} />
     </button>
+  );
+}
+
+// ── Pot ──────────────────────────────────────────────────────────────────────
+// One pot's accumulated balance (the money set aside so far) with its this-month
+// routing target as a quiet subline. Balance and target never contradict: balance
+// is the fold of the ledger; target is this month's split from the anchored plan.
+
+interface PotProps {
+  kind: PotKind;
+  balance: number;               // AED set aside so far (accumulated)
+  monthlyTarget?: number;        // AED routed into this pot in a typical month
+  note?: string;                 // overrides the default blurb
+  style?: CSSProperties;
+}
+
+export function Pot({ kind, balance, monthlyTarget, note, style }: PotProps): React.ReactElement {
+  const m = POT_META[kind];
+  const overdrawn = balance < 0;
+  const sub = monthlyTarget && monthlyTarget > 0
+    ? `${money(monthlyTarget)}/mo set aside`
+    : (note ?? m.blurb);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, ...style }}>
+      <span style={{
+        width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+        background: m.soft, color: m.color,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ width: 10, height: 10, borderRadius: 3, background: m.color }} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)' }}>{m.label}</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{sub}</div>
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div className="serif tnum" style={{ fontSize: 16.5, color: overdrawn ? 'var(--clay)' : 'var(--ink)' }}>
+          {money(balance)}
+        </div>
+        <div className="smallcaps" style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>set aside</div>
+      </div>
+    </div>
+  );
+}
+
+// ── SplitFlow ──────────────────────────────────────────────────────────────────
+// The routing moment: a received deposit fanning out into its pots. Honest framing —
+// "set aside in-app", never "transferred". Reused on Home and the received flow.
+
+interface SplitFlowProps {
+  amount: number;          // deposit in AED
+  split: PotBalances;      // per-pot AED for this deposit
+  ccy?: string;            // native currency, if foreign
+  srcAmount?: number;      // native amount, if foreign
+  style?: CSSProperties;
+}
+
+export function SplitFlow({ amount, split, ccy, srcAmount, style }: SplitFlowProps): React.ReactElement {
+  const foreign = ccy && ccy !== 'AED' && srcAmount != null;
+  const rows = POT_KINDS
+    .map((k) => [k, split[k]] as [PotKind, number])
+    .filter(([, v]) => v > 0);
+  return (
+    <div style={style}>
+      <div style={{ textAlign: 'center', marginBottom: 18 }}>
+        <div className="smallcaps" style={{ color: 'var(--mint)', marginBottom: 6 }}>Received</div>
+        <div className="serif tnum" style={{ fontSize: 40, color: 'var(--ink)', lineHeight: 1 }}>
+          {foreign ? fmtFx(srcAmount!, ccy!) : <Cur n={amount} />}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8 }}>
+          {foreign ? `${approxAED(amount)} · ` : ''}splits automatically into your pots
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {rows.map(([k, v], i) => {
+          const m = POT_META[k];
+          return (
+            <div
+              key={k}
+              className="rise"
+              style={{
+                animationDelay: `${140 + i * 90}ms`,
+                display: 'flex', alignItems: 'center', gap: 11,
+                padding: '11px 0',
+                borderTop: i ? '1px solid var(--hairline)' : 'none',
+              }}
+            >
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: m.color, flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)' }}>{m.label}</span>
+              <span style={{ color: 'var(--muted)', fontSize: 13 }}>→</span>
+              <span className="serif tnum" style={{ fontSize: 15.5, color: 'var(--ink)', minWidth: 78, textAlign: 'right' }}>
+                {money(v)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

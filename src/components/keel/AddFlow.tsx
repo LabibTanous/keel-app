@@ -12,10 +12,10 @@
 import React, { useState, useRef, CSSProperties, useCallback } from 'react';
 import { usePlan } from '@/lib/store';
 import type { ExpenseItem } from '@/lib/store';
-import { toAED } from '@/lib/engine';
-import type { IncomeItem } from '@/lib/engine';
+import { toAED, splitDeposit } from '@/lib/engine';
+import type { IncomeItem, PotSplit } from '@/lib/engine';
 import type { BigPayment } from '@/lib/demo-seed';
-import { Segmented, approxAED, fmtFx } from '@/components/keel/ui';
+import { Segmented, approxAED, fmtFx, SplitFlow } from '@/components/keel/ui';
 import { IconAfford } from '@/components/keel/icons';
 import Link from 'next/link';
 
@@ -104,7 +104,7 @@ const FORM_CONFIGS: FormConfigs = {
     fields: [['Source', 'e.g. Atlas Co'], ['Amount', '0'], ['Date received', 'Today']],
     segLabel: null,
     seg: null,
-    note: "Adds to your real history — what your steady paycheck is built from.",
+    note: "It lands and splits into your pots — tax, buffer and goals set aside automatically.",
   },
   expense: {
     title: 'Log an expense',
@@ -145,8 +145,11 @@ interface AddFormProps {
 }
 
 function AddForm({ type, onDone }: AddFormProps) {
-  const { addIncome, addBigPayment, addExpense } = usePlan();
+  const { addIncome, addBigPayment, addExpense, plan } = usePlan();
   const cfg = FORM_CONFIGS[type];
+
+  // After a RECEIVED deposit lands, show it splitting into pots before closing.
+  const [routed, setRouted] = useState<{ split: PotSplit; amountAED: number; ccy: string; srcAmount: number } | null>(null);
 
   const defaultSeg =
     type === 'income' ? 'likely' :
@@ -211,13 +214,22 @@ function AddForm({ type, onDone }: AddFormProps) {
     // For income/received: wire into store
     if (type === 'income' || type === 'received') {
       if (amtNum > 0) {
+        const confidence: IncomeItem['confidence'] = type === 'received' ? 'confirmed' : toEngineConfidence(seg);
         const item: IncomeItem = {
           amount: amtNum,
           currency: ccy,
           date: date || today,
-          confidence: type === 'received' ? 'confirmed' : toEngineConfidence(seg),
+          confidence,
         };
         addIncome(item);
+        // Confirmed = received → it routes and splits. Show the split, then close.
+        // Ratios come from the plan as it stands pre-deposit (matches the store's
+        // pre-append routing), so the deposit doesn't distort its own split.
+        if (confidence === 'confirmed') {
+          const amountAED = toAED(amtNum, ccy);
+          setRouted({ split: splitDeposit(amountAED, plan.pots.ratios), amountAED, ccy, srcAmount: amtNum });
+          return; // hold the sheet open on the split view
+        }
       }
     }
     // For expense: wire into store
@@ -252,6 +264,26 @@ function AddForm({ type, onDone }: AddFormProps) {
       }
     }
     onDone();
+  }
+
+  // Split confirmation view — the routing moment.
+  if (routed) {
+    return (
+      <div>
+        <SplitFlow amount={routed.amountAED} split={routed.split} ccy={routed.ccy} srcAmount={routed.srcAmount} />
+        <button
+          type="button"
+          onClick={onDone}
+          style={{
+            width: '100%', padding: '15px', borderRadius: 14, cursor: 'pointer', marginTop: 20,
+            background: 'var(--pine)', color: 'var(--on-pine)', border: 'none',
+            fontFamily: 'var(--font-ui)', fontSize: 15.5, fontWeight: 700,
+          }}
+        >
+          Done
+        </button>
+      </div>
+    );
   }
 
   return (
