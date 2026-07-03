@@ -6,13 +6,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { usePlan } from '@/lib/store';
 import { money, amt, Card, Cur } from '@/components/keel/ui';
 import { PaycheckChart } from '@/components/keel/PaycheckChart';
 import type { HistoryEntry } from '@/components/keel/PaycheckChart';
-import { groupByMonth } from '@/lib/engine';
-import { Dock } from '@/components/keel/Dock';
-import { KEEL_OPEN_ADD, KEEL_OPEN_ASSISTANT } from '@/components/keel/GlobalOverlays';
+import { groupByMonth, bigPaymentMonthly } from '@/lib/engine';
+import { KEEL_OPEN_ADD } from '@/components/keel/GlobalOverlays';
 
 // ── Band classification ──────────────────────────────────────────────────────
 
@@ -85,6 +85,7 @@ function StatTile({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function PaycheckClient() {
+  const router = useRouter();
   const { plan, profile, setPaycheck } = usePlan();
 
   // Build history from profile incomes (last 12 months, chronological)
@@ -135,17 +136,17 @@ export function PaycheckClient() {
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '60px 18px 14px' }}>
-        <Link href="/dashboard" style={{
+        <Link href="/dashboard" aria-label="Back to dashboard" className="focus-ring" style={{
           width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
           background: 'var(--surface)', boxShadow: 'var(--shadow-sm)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--hairline)',
         }}>
-          <svg width="11" height="18" viewBox="0 0 11 18" fill="none">
+          <svg width="11" height="18" viewBox="0 0 11 18" fill="none" aria-hidden="true" focusable="false">
             <path d="M9 2 2 9l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
-        <div className="serif" style={{ fontSize: 24, color: 'var(--ink)' }}>Spending pot</div>
+        <h1 className="serif" style={{ margin: 0, fontWeight: 500, fontSize: 24, color: 'var(--ink)' }}>Spending pot</h1>
       </div>
 
       <div style={{ padding: '0 18px 6px', marginTop: -2 }}>
@@ -225,9 +226,9 @@ export function PaycheckClient() {
                       <span style={{ fontSize: 15, color: 'var(--muted)' }}>/mo</span>
                     </div>
                   </div>
-                  <span style={{
-                    alignSelf: 'center', fontSize: 12.5, fontWeight: 700, color: 'var(--on-pine)',
-                    background: b.color, padding: '5px 12px', borderRadius: 999,
+                  <span aria-live="polite" style={{
+                    alignSelf: 'center', fontSize: 12.5, fontWeight: 700, color: 'var(--ink)',
+                    background: b.color.replace(')', '-soft)'), padding: '5px 12px', borderRadius: 999,
                   }}>{b.label}</span>
                 </div>
 
@@ -243,6 +244,7 @@ export function PaycheckClient() {
                   }} />
                   <input
                     aria-label="Paycheck amount"
+                    aria-valuetext={`AED ${amt(localWage)} per month — ${b.label}`}
                     className="keel-range"
                     type="range"
                     min={sliderMin}
@@ -345,11 +347,11 @@ export function PaycheckClient() {
                               Goal: {g.name}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                              towards AED {g.targetAmt.toLocaleString()} by {targetDateStr}
+                              towards {money(g.targetAmt)} by {targetDateStr}
                             </div>
                           </div>
                           <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--pine)', flexShrink: 0, marginLeft: 12 }}>
-                            AED {monthly.toLocaleString()}
+                            {money(monthly)}
                           </div>
                         </div>
                       );
@@ -357,7 +359,7 @@ export function PaycheckClient() {
 
                   {/* Per-big-payment rows */}
                   {plan.bigPayments.map((bp, i) => {
-                    const monthly = Math.round(bp.amt / 6);
+                    const monthly = bigPaymentMonthly(bp.amt, bp.dueDate, today);
                     const isFirst = plan.userGoals.filter((g) => g.targetAmt > 0 && g.targetDate).length === 0 && i === 0;
                     return (
                       <div
@@ -376,7 +378,7 @@ export function PaycheckClient() {
                           </div>
                         </div>
                         <div className="tnum" style={{ fontSize: 14, fontWeight: 600, color: 'var(--pine)', flexShrink: 0, marginLeft: 12 }}>
-                          AED {monthly.toLocaleString()}
+                          {money(monthly)}
                         </div>
                       </div>
                     );
@@ -388,7 +390,7 @@ export function PaycheckClient() {
                       True spending budget
                     </span>
                     <span className="serif tnum" style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
-                      AED {(plan.discretionary ?? plan.allocation.spending).toLocaleString()}
+                      {money(plan.discretionary ?? plan.allocation.spending)}
                     </span>
                   </div>
                 </Card>
@@ -462,7 +464,8 @@ export function PaycheckClient() {
         )}
       </div>
 
-      {/* Sticky save bar */}
+      {/* Sticky save bar (no Dock on this screen — matches the design reference, and
+          avoids the fixed Dock overlapping/intercepting these buttons) */}
       <div style={{
         position: 'fixed',
         bottom: 0,
@@ -471,24 +474,30 @@ export function PaycheckClient() {
         width: '100%',
         maxWidth: 480,
         zIndex: 40,
-        padding: '14px 18px 30px',
+        padding: '14px 18px calc(30px + env(safe-area-inset-bottom, 0px))',
         background: 'linear-gradient(to top, var(--bg) 62%, transparent)',
         display: 'flex', gap: 12, alignItems: 'center',
       }}>
         <button
           type="button"
           onClick={() => setLocalWage(plan.paycheck)}
+          disabled={!hasHistory}
+          className="focus-ring"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
+            background: 'none', border: 'none', cursor: hasHistory ? 'pointer' : 'default',
             color: 'var(--muted)', fontFamily: 'var(--font-ui)', fontSize: 14, fontWeight: 600,
-            whiteSpace: 'nowrap',
+            whiteSpace: 'nowrap', opacity: hasHistory ? 1 : 0.4,
           }}
         >
           Reset
         </button>
         <button
           type="button"
-          onClick={() => { setPaycheck(localWage); }}
+          onClick={() => {
+            if (hasHistory) { setPaycheck(localWage); router.push('/dashboard'); }
+            else { window.dispatchEvent(new Event(KEEL_OPEN_ADD)); }
+          }}
+          className="focus-ring"
           style={{
             flex: 1, padding: '15px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
             background: 'var(--pine)', color: 'var(--on-pine)', border: 'none',
@@ -499,13 +508,6 @@ export function PaycheckClient() {
           {hasHistory ? 'Save this paycheck' : 'Add your first income'}
         </button>
       </div>
-
-      <Dock
-        active="home"
-        links={{ home: '/dashboard', coming: '/coming', goal: '/goal' }}
-        onAdd={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
-        onAssistant={() => window.dispatchEvent(new Event(KEEL_OPEN_ASSISTANT))}
-      />
     </div>
   );
 }
