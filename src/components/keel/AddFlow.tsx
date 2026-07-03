@@ -9,7 +9,7 @@
  * On confirm for income/received types: calls store.addIncome and closes.
  */
 
-import React, { useState, useRef, CSSProperties, useCallback } from 'react';
+import React, { useState, useRef, useEffect, CSSProperties, useCallback } from 'react';
 import { usePlan } from '@/lib/store';
 import type { ExpenseItem } from '@/lib/store';
 import { toAED, splitDeposit } from '@/lib/engine';
@@ -58,7 +58,7 @@ const STEP_TITLES: Record<AddTypeKey, string> = {
 const inputStyle: CSSProperties = {
   width: '100%', padding: '13px 14px', borderRadius: 13, boxSizing: 'border-box',
   border: '1px solid var(--hairline)', background: 'var(--surface)', color: 'var(--ink)',
-  fontFamily: 'var(--font-ui)', fontSize: 16, outline: 'none',
+  fontFamily: 'var(--font-ui)', fontSize: 16,
 };
 
 // ── Field wrapper ─────────────────────────────────────────────────────────────
@@ -72,8 +72,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} style={inputStyle} />;
+function TextInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`focus-ring${className ? ' ' + className : ''}`} style={inputStyle} />;
 }
 
 // ── AddForm ───────────────────────────────────────────────────────────────────
@@ -166,6 +166,7 @@ function AddForm({ type, onDone }: AddFormProps) {
   const [paymentDue, setPaymentDue] = useState(today);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [error, setError] = useState('');
 
   const handleReceiptScan = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -211,57 +212,60 @@ function AddForm({ type, onDone }: AddFormProps) {
   const amtNum = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
 
   function handleConfirm() {
+    // Validate first — never close the sheet (discarding input) on an invalid submit.
+    if ((type === 'income' || type === 'received' || type === 'expense') && amtNum <= 0) {
+      setError('Enter an amount first.');
+      return;
+    }
+    if (type === 'payment' && (amtNum <= 0 || !paymentName)) {
+      setError(!paymentName ? 'Give this payment a name.' : 'Enter an amount first.');
+      return;
+    }
+
     // For income/received: wire into store
     if (type === 'income' || type === 'received') {
-      if (amtNum > 0) {
-        const confidence: IncomeItem['confidence'] = type === 'received' ? 'confirmed' : toEngineConfidence(seg);
-        const item: IncomeItem = {
-          amount: amtNum,
-          currency: ccy,
-          date: date || today,
-          confidence,
-        };
-        addIncome(item);
-        // Confirmed = received → it routes and splits. Show the split, then close.
-        // Ratios come from the plan as it stands pre-deposit (matches the store's
-        // pre-append routing), so the deposit doesn't distort its own split.
-        if (confidence === 'confirmed') {
-          const amountAED = toAED(amtNum, ccy);
-          setRouted({ split: splitDeposit(amountAED, plan.pots.ratios), amountAED, ccy, srcAmount: amtNum });
-          return; // hold the sheet open on the split view
-        }
+      const confidence: IncomeItem['confidence'] = type === 'received' ? 'confirmed' : toEngineConfidence(seg);
+      const item: IncomeItem = {
+        amount: amtNum,
+        currency: ccy,
+        date: date || today,
+        confidence,
+      };
+      addIncome(item);
+      // Confirmed = received → it routes and splits. Show the split, then close.
+      // Ratios come from the plan as it stands pre-deposit (matches the store's
+      // pre-append routing), so the deposit doesn't distort its own split.
+      if (confidence === 'confirmed') {
+        const amountAED = toAED(amtNum, ccy);
+        setRouted({ split: splitDeposit(amountAED, plan.pots.ratios), amountAED, ccy, srcAmount: amtNum });
+        return; // hold the sheet open on the split view
       }
     }
     // For expense: wire into store
     if (type === 'expense') {
-      if (amtNum > 0) {
-        const item: ExpenseItem = {
-          amount: amtNum,
-          currency: ccy,
-          date: date || today,
-          category: source || undefined,
-        };
-        addExpense(item);
-      }
+      const item: ExpenseItem = {
+        amount: amtNum,
+        currency: ccy,
+        date: date || today,
+        category: source || undefined,
+      };
+      addExpense(item);
     }
     // For big payment: wire into store
     if (type === 'payment') {
-      const parsedAmt = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0;
-      if (parsedAmt > 0 && paymentName) {
-        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const dueDate = paymentDue ? new Date(paymentDue + 'T00:00:00') : new Date();
-        const m = MONTHS[dueDate.getMonth()];
-        const pos = (dueDate.getMonth() + dueDate.getDate() / 31) / 12;
-        const bp: BigPayment = {
-          id: Date.now().toString(),
-          m,
-          pos: Math.min(Math.max(pos, 0), 1),
-          name: paymentName,
-          amt: parsedAmt,
-          status: seg === 'on' ? 'saving' : 'soon',
-        };
-        addBigPayment(bp);
-      }
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const dueDate = paymentDue ? new Date(paymentDue + 'T00:00:00') : new Date();
+      const m = MONTHS[dueDate.getMonth()];
+      const pos = (dueDate.getMonth() + dueDate.getDate() / 31) / 12;
+      const bp: BigPayment = {
+        id: Date.now().toString(),
+        m,
+        pos: Math.min(Math.max(pos, 0), 1),
+        name: paymentName,
+        amt: amtNum,
+        status: seg === 'on' ? 'saving' : 'soon',
+      };
+      addBigPayment(bp);
     }
     onDone();
   }
@@ -290,20 +294,23 @@ function AddForm({ type, onDone }: AddFormProps) {
     <div>
       {type === 'expense' && (
         <div style={{ marginBottom: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+          <label className="focus-within-ring" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
             background: 'var(--surface-2)', borderRadius: 12, padding: '10px 14px',
             fontSize: 13.5, color: 'var(--muted)', fontWeight: 600 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
               <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.8"/>
             </svg>
             {scanLoading ? 'Scanning…' : 'Scan a receipt'}
             <input type="file" accept="image/*" capture="environment"
-              style={{ display: 'none' }}
+              aria-label="Scan a receipt"
+              style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
               onChange={handleReceiptScan}
             />
           </label>
-          {scanError && <div style={{ fontSize: 12, color: 'var(--clay)', marginTop: 4 }}>{scanError}</div>}
+          <div role="status" aria-live="polite" style={{ fontSize: 12, color: 'var(--clay)', marginTop: 4 }}>
+            {scanError || (scanLoading ? 'Scanning receipt…' : '')}
+          </div>
         </div>
       )}
       {cfg.fields.map(([l, ph]) => {
@@ -336,6 +343,7 @@ function AddForm({ type, onDone }: AddFormProps) {
             <Field key={l} label={l}>
               <input
                 aria-label="Expense date"
+                className="focus-ring"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -361,6 +369,8 @@ function AddForm({ type, onDone }: AddFormProps) {
                   <select
                     value={ccy}
                     onChange={(e) => setCcy(e.target.value)}
+                    aria-label="Currency"
+                    className="focus-ring"
                     style={{
                       ...inputStyle,
                       width: 'auto',
@@ -410,6 +420,7 @@ function AddForm({ type, onDone }: AddFormProps) {
             <Field key={l} label={l}>
               <input
                 aria-label={l}
+                className="focus-ring"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -447,6 +458,7 @@ function AddForm({ type, onDone }: AddFormProps) {
             <Field key={l} label={l}>
               <input
                 aria-label="Due date"
+                className="focus-ring"
                 type="date"
                 value={paymentDue}
                 onChange={(e) => setPaymentDue(e.target.value)}
@@ -474,6 +486,12 @@ function AddForm({ type, onDone }: AddFormProps) {
         </p>
       )}
 
+      <div role="alert" aria-live="assertive" style={{ minHeight: error ? undefined : 0 }}>
+        {error && (
+          <p style={{ margin: '0 2px 12px', fontSize: 13, fontWeight: 600, color: 'var(--clay)' }}>{error}</p>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={handleConfirm}
@@ -494,6 +512,7 @@ function AddForm({ type, onDone }: AddFormProps) {
 export function AddFlow({ open, onClose }: AddFlowProps) {
   const [step, setStep] = useState<'choose' | AddTypeKey>('choose');
   const prevOpen = useRef(open);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   // Reset to choose step when the sheet transitions from closed → open
   if (!prevOpen.current && open) {
@@ -501,8 +520,21 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
   }
   prevOpen.current = open;
 
+  // Move focus into the sheet on open; close on Escape.
+  useEffect(() => {
+    if (!open) return;
+    sheetRef.current?.focus();
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   return (
     <div
+      aria-hidden={!open}
+      // @ts-expect-error — `inert` is a valid DOM attr (React 18.3 forwards it); removes
+      // the whole closed sheet from tab order + a11y tree.
+      inert={!open ? '' : undefined}
       style={{
         position: 'fixed', inset: 0, zIndex: 70,
         pointerEvents: open ? 'auto' : 'none',
@@ -512,6 +544,7 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
       <button
         type="button"
         aria-label="Close"
+        tabIndex={open ? 0 : -1}
         onClick={onClose}
         style={{
           position: 'absolute', inset: 0,
@@ -524,14 +557,20 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
 
       {/* Sheet */}
       <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="addflow-title"
+        tabIndex={-1}
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
           background: 'var(--bg)', borderRadius: '26px 26px 0 0',
           padding: '12px 18px 28px',
-          transform: open ? 'translateY(0)' : 'translateY(900px)',
+          transform: open ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.35s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -10px 40px rgba(0,0,0,0.18)',
-          maxHeight: '88%', overflowY: 'auto',
+          maxHeight: '88%', overflowY: 'auto', overscrollBehavior: 'contain',
+          outline: 'none',
           maxWidth: 480, marginLeft: 'auto', marginRight: 'auto',
         }}
       >
@@ -545,9 +584,9 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
 
         {step === 'choose' ? (
           <div>
-            <div className="serif" style={{ fontSize: 23, color: 'var(--ink)', marginBottom: 3 }}>
+            <h2 id="addflow-title" className="serif" style={{ fontSize: 23, color: 'var(--ink)', margin: '0 0 3px', fontWeight: 400 }}>
               Add to your picture
-            </div>
+            </h2>
             <p style={{ margin: '0 0 18px', fontSize: 13.5, color: 'var(--muted)' }}>
               What&apos;s coming in, going out, or worth saving for?
             </p>
@@ -627,6 +666,7 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
                 type="button"
                 onClick={() => setStep('choose')}
                 aria-label="Back"
+                className="focus-ring"
                 style={{
                   width: 34, height: 34, borderRadius: '50%',
                   border: '1px solid var(--hairline)', background: 'var(--surface)',
@@ -634,13 +674,13 @@ export function AddFlow({ open, onClose }: AddFlowProps) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <svg width="9" height="15" viewBox="0 0 9 15" fill="none">
+                <svg width="9" height="15" viewBox="0 0 9 15" fill="none" aria-hidden="true" focusable="false">
                   <path d="M7 2 2 7.5 7 13" stroke="var(--ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-              <div className="serif" style={{ fontSize: 21, color: 'var(--ink)' }}>
+              <h2 id="addflow-title" className="serif" style={{ fontSize: 21, color: 'var(--ink)', margin: 0, fontWeight: 400 }}>
                 {STEP_TITLES[step as AddTypeKey]}
-              </div>
+              </h2>
             </div>
 
             <AddForm type={step as AddTypeKey} onDone={onClose} />

@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { LazyMotion, domAnimation, m, AnimatePresence } from 'framer-motion';
+import { LazyMotion, domAnimation, m, useReducedMotion } from 'framer-motion';
 import { IconBack, IconForward } from './icons';
 
 export type Tense = 'forward' | 'back';
@@ -24,6 +24,7 @@ const SPRING = { type: 'spring' as const, stiffness: 260, damping: 22, mass: 0.8
 
 export function TenseToggle({ tense, onChange }: TenseToggleProps): React.ReactElement {
   const forward = tense === 'forward';
+  const reduce = useReducedMotion();
 
   function halfStyle(active: boolean, plain: boolean): React.CSSProperties {
     return {
@@ -60,7 +61,7 @@ export function TenseToggle({ tense, onChange }: TenseToggleProps): React.ReactE
         {/* Sliding thumb via framer-motion */}
         <m.div
           animate={{ x: forward ? '100%' : '0%' }}
-          transition={SPRING}
+          transition={reduce ? { duration: 0 } : SPRING}
           style={{
             position: 'absolute',
             top: 4,
@@ -80,6 +81,8 @@ export function TenseToggle({ tense, onChange }: TenseToggleProps): React.ReactE
         {/* Spent (back) */}
         <button
           type="button"
+          aria-pressed={!forward}
+          className="focus-ring"
           style={halfStyle(!forward, true)}
           onClick={() => onChange('back')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onChange('back'); }}
@@ -91,6 +94,8 @@ export function TenseToggle({ tense, onChange }: TenseToggleProps): React.ReactE
         {/* Spending (forward) */}
         <button
           type="button"
+          aria-pressed={forward}
+          className="focus-ring"
           style={halfStyle(forward, false)}
           onClick={() => onChange('forward')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onChange('forward'); }}

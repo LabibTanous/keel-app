@@ -11,6 +11,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { IconHome, IconComing, IconGoal, IconSpark, IconPlus } from './icons';
+import { KEEL_OPEN_ASSISTANT } from './GlobalOverlays';
 
 type TabKey = 'home' | 'coming' | 'goal' | 'adviser';
 
@@ -38,13 +39,19 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
   const left  = TABS.slice(0, 2);
   const right = TABS.slice(2);
 
+  // Adviser always works: fall back to the app-wide open-assistant event.
+  const openAssistant = onAssistant ?? (() => window.dispatchEvent(new Event(KEEL_OPEN_ASSISTANT)));
+
   function renderTab([key, label, IconComp]: TabDef): React.ReactElement {
     const isActive = active === key;
+    const handler = key === 'adviser' ? openAssistant : undefined;
+    const actionable = Boolean(links[key]) || Boolean(handler);
 
     const tabStyle: React.CSSProperties = {
       background: 'none',
       border: 'none',
-      cursor: links[key] ? 'pointer' : (key === 'adviser' ? 'pointer' : 'default'),
+      cursor: actionable ? 'pointer' : 'default',
+      touchAction: 'manipulation',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -66,21 +73,25 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
 
     if (links[key]) {
       return (
-        <Link key={key} href={links[key]!} style={tabStyle}>
+        <Link key={key} href={links[key]!} aria-current={isActive ? 'page' : undefined} className="focus-ring" style={tabStyle}>
           {inner}
         </Link>
       );
     }
 
+    if (handler) {
+      return (
+        <button type="button" key={key} onClick={handler} aria-current={isActive ? 'page' : undefined} className="focus-ring" style={tabStyle}>
+          {inner}
+        </button>
+      );
+    }
+
+    // No link, no handler — render a non-interactive label, not a dead focusable button.
     return (
-      <button
-        type="button"
-        key={key}
-        onClick={key === 'adviser' ? onAssistant : undefined}
-        style={{ ...tabStyle, cursor: key === 'adviser' ? 'pointer' : 'default' }}
-      >
+      <span key={key} aria-disabled="true" style={{ ...tabStyle, cursor: 'default' }}>
         {inner}
-      </button>
+      </span>
     );
   }
 
@@ -106,7 +117,7 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
         pointerEvents: 'auto',
       }}>
         {/* Pill bar */}
-        <div style={{
+        <nav aria-label="Main" style={{
           display: 'flex',
           alignItems: 'center',
           background: 'var(--surface)',
@@ -119,12 +130,14 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
           {/* spacer for center button */}
           <div style={{ width: 56, flexShrink: 0 }} />
           {right.map(renderTab)}
-        </div>
+        </nav>
 
         {/* Center + button — pine circle, sits above the pill */}
         <button
           type="button"
           onClick={onAdd}
+          aria-label="Add income or expense"
+          className="focus-ring"
           style={{
             position: 'absolute',
             left: '50%',
@@ -137,6 +150,7 @@ export function Dock({ active = 'home', onAdd, onAssistant, links = {} }: DockPr
             color: 'var(--on-pine)',
             border: '3px solid var(--bg)',
             cursor: 'pointer',
+            touchAction: 'manipulation',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

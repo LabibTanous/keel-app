@@ -31,7 +31,7 @@ interface Message {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const INITIAL_MESSAGE = "Hey — I'm your Keel adviser. Ask me anything about your money: how your income splits, your pots, what's coming, or your runway.";
+const INITIAL_MESSAGE = "Hey — I’m your Keel adviser. Ask me anything about your money: how your income splits, your pots, what’s coming, or your runway.";
 
 const ASST_REFUSAL =
   "That’s outside what I can advise on — I can’t recommend specific investments like stocks or crypto. What I can do is help you keep a healthy buffer and enough set aside, so when you do make those calls, it’s with money you can spare.";
@@ -168,6 +168,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const prevOpenRef = useRef(open);
 
   // Reset inline at render time when open transitions false→true (avoids extra useEffect render)
@@ -216,7 +217,8 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
         const reply = (data.reply || "").trim();
         if (data.action) {
           const a = data.action;
-          const today = new Date().toISOString().slice(0, 10);
+          const d = new Date();
+          const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           if (a.type === 'expense') {
             addExpense({ amount: a.amount, currency: a.currency || 'AED', date: a.date || today, category: a.category });
           } else if (a.type === 'income_received') {
@@ -237,11 +239,24 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') ask(input);
+    // Don't send half-composed text (Arabic transliteration, CJK IME).
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) ask(input);
   }
+
+  // Move focus into the sheet on open; close on Escape.
+  useEffect(() => {
+    if (!open) return;
+    inputRef.current?.focus();
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   return (
     <div
+      aria-hidden={!open}
+      // @ts-expect-error — `inert` is a valid DOM attr (React 18.3 forwards it).
+      inert={!open ? '' : undefined}
       style={{
         position: 'fixed', inset: 0, zIndex: 80,
         pointerEvents: open ? 'auto' : 'none',
@@ -251,7 +266,9 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
       <button
         type="button"
         aria-label="Close adviser"
+        tabIndex={open ? 0 : -1}
         onClick={onClose}
+        className="keel-backdrop focus-ring"
         style={{
           position: 'absolute', inset: 0,
           background: 'rgba(20,25,21,0.4)',
@@ -263,11 +280,16 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
 
       {/* Sheet */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="adviser-title"
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        className="keel-sheet"
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
           height: '88%',
           background: 'var(--bg)', borderRadius: '26px 26px 0 0',
-          transform: open ? 'translateY(0)' : 'translateY(1000px)',
+          transform: open ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.35s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: '0 -10px 40px rgba(0,0,0,0.2)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -288,12 +310,14 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             <IconSpark size={19} />
           </span>
           <div style={{ flex: 1 }}>
-            <div className="serif" style={{ fontSize: 18, color: 'var(--ink)', lineHeight: 1 }}>Keel adviser</div>
+            <div id="adviser-title" className="serif" style={{ fontSize: 18, color: 'var(--ink)', lineHeight: 1 }}>Keel adviser</div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>Knows your plan &middot; here to help</div>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close adviser"
+            className="focus-ring"
             style={{
               width: 30, height: 30, borderRadius: '50%', border: 'none',
               background: 'var(--surface-2)', cursor: 'pointer',
@@ -301,15 +325,18 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
               color: 'var(--muted)', fontSize: 16, fontFamily: 'var(--font-ui)',
             }}
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
         {/* Messages */}
         <div
           ref={scrollRef}
+          role="log"
+          aria-live="polite"
           style={{
             flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as 'auto',
+            overscrollBehavior: 'contain',
             padding: '16px 16px 8px',
             display: 'flex', flexDirection: 'column', gap: 10,
           }}
@@ -317,7 +344,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
           {msgs.map((m) => (
             <div
               key={m.id}
-              style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '84%' }}
+              style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '84%', minWidth: 0 }}
             >
               <div style={{
                 background: m.role === 'user' ? 'var(--pine)' : 'var(--surface)',
@@ -325,6 +352,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
                 border: m.role === 'user' ? 'none' : '1px solid var(--hairline)',
                 borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                 padding: '11px 14px', fontSize: 14.5, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
               }}>
                 {m.content}
               </div>
@@ -349,6 +377,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
                   type="button"
                   key={s}
                   onClick={() => ask(s)}
+                  className="focus-ring"
                   style={{
                     background: 'var(--pine-soft)', color: 'var(--pine)',
                     border: 'none', borderRadius: 999,
@@ -369,21 +398,25 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: 6, padding: '8px 16px 2px',
           }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" style={{ opacity: 0.5 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ opacity: 0.5 }}>
               <circle cx="12" cy="12" r="9.2" fill="none" stroke="var(--muted)" strokeWidth="1.8" />
               <path d="M12 11v5.5" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" />
               <circle cx="12" cy="7.6" r="1.15" fill="var(--muted)" />
             </svg>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ fontSize: 11, color: 'var(--ink)' }}>
               Keel offers general guidance, not financial advice.
             </span>
           </div>
           <div style={{
             display: 'flex', gap: 9, alignItems: 'center',
-            padding: '6px 16px', paddingBottom: 22,
+            padding: '6px 16px', paddingBottom: 'calc(22px + env(safe-area-inset-bottom))',
           }}>
             <input
+              ref={inputRef}
               aria-label="Ask about your money"
+              name="adviser-question"
+              autoComplete="off"
+              enterKeyHint="send"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -400,6 +433,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
               type="button"
               onClick={() => ask(input)}
               aria-label="Send"
+              className="focus-ring"
               disabled={busy}
               style={{
                 width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
@@ -409,7 +443,7 @@ export function Assistant({ open, onClose, plan }: AssistantProps) {
                 opacity: busy ? 0.5 : 1,
               }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
                 <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>

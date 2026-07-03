@@ -29,8 +29,8 @@ export interface PotMeta { label: string; color: string; soft: string; blurb: st
 export const POT_META: Record<PotKind, PotMeta> = {
   bills:    { label: 'Bills',    color: 'var(--muted)', soft: 'var(--surface-2)',                     blurb: 'Rent & essentials, covered first' },
   tax:      { label: 'Tax',      color: 'var(--clay)',  soft: 'var(--clay-soft)',                     blurb: 'Set aside so filing season never stings' },
-  zakat:    { label: 'Zakat',    color: 'var(--zakat)', soft: 'var(--zakat-soft, rgba(46,110,107,0.12))', blurb: '2.5% of wealth, ready when due' },
-  buffer:   { label: 'Buffer',   color: 'var(--mint)',  soft: 'var(--mint-soft, rgba(47,163,116,0.12))',  blurb: 'Your runway — the cushion that carries lean months' },
+  zakat:    { label: 'Zakat',    color: 'var(--zakat)', soft: 'var(--zakat-soft)', blurb: '2.5% of wealth, ready when due' },
+  buffer:   { label: 'Buffer',   color: 'var(--mint)',  soft: 'var(--mint-soft)',  blurb: 'Your runway — the cushion that carries lean months' },
   goals:    { label: 'Goals',    color: 'var(--gold)',  soft: 'var(--gold-soft)',                     blurb: 'Quietly saving toward what you want' },
   spending: { label: 'Spending', color: 'var(--pine)',  soft: 'var(--pine-soft)',                     blurb: "What's left — genuinely yours to spend" },
 };
@@ -110,7 +110,7 @@ interface DisclaimerProps {
 export function Disclaimer({ children, style }: DisclaimerProps): React.ReactElement {
   return (
     <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 11.5, lineHeight: 1.45, color: 'var(--muted)', ...style }}>
-      <svg width="13" height="13" viewBox="0 0 24 24" style={{ flexShrink: 0, marginTop: 1.5, opacity: 0.6 }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ flexShrink: 0, marginTop: 1.5, opacity: 0.6 }}>
         <circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
         <path d="M12 11v5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         <circle cx="12" cy="7.6" r="1.15" fill="currentColor" />
@@ -167,16 +167,16 @@ interface ScreenSkeletonProps {
 /** Full-screen skeleton — drop in while data is loading. */
 export function ScreenSkeleton({ hero = true, cards = 2 }: ScreenSkeletonProps): React.ReactElement {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div role="status" aria-label="Loading…" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {hero && (
-        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)', padding: '22px var(--pad) 24px' }}>
+        <div aria-hidden="true" style={{ background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)', padding: '22px var(--pad) 24px' }}>
           <Sk w={80} h={11} mb={14} />
           <Sk w={200} h={40} r={12} mb={16} />
           <Sk w="55%" />
         </div>
       )}
       {Array.from({ length: cards }).map((_, i) => (
-        <SkCard key={i} lines={i === 0 ? 4 : 3} />
+        <div key={i} aria-hidden="true"><SkCard lines={i === 0 ? 4 : 3} /></div>
       ))}
     </div>
   );
@@ -220,16 +220,17 @@ interface SegmentedProps {
   options: SegmentedOption[];
   value: string;
   onChange: (value: string) => void;
+  ariaLabel?: string;
 }
 
 /** Quiet pill-shaped segmented control. Thumb positioned by percentage. */
-export function Segmented({ options, value, onChange }: SegmentedProps): React.ReactElement {
+export function Segmented({ options, value, onChange, ariaLabel }: SegmentedProps): React.ReactElement {
   const n = options.length;
   const idx = Math.max(0, options.findIndex(o => o.value === value));
   return (
-    <div style={{ position: 'relative', display: 'flex', background: 'var(--surface-2)', borderRadius: 'var(--r-pill)', padding: 4 }}>
+    <div role="group" aria-label={ariaLabel} style={{ position: 'relative', display: 'flex', background: 'var(--surface-2)', borderRadius: 'var(--r-pill)', padding: 4 }}>
       {/* sliding thumb */}
-      <div style={{
+      <div className="keel-thumb" style={{
         position: 'absolute', top: 4, bottom: 4,
         left: `calc(${(idx * 100) / n}% + 4px)`,
         width: `calc(${100 / n}% - 8px)`,
@@ -242,10 +243,12 @@ export function Segmented({ options, value, onChange }: SegmentedProps): React.R
           type="button"
           key={o.value}
           onClick={() => onChange(o.value)}
+          aria-pressed={o.value === value}
+          className="focus-ring"
           style={{
             flex: 1, position: 'relative', zIndex: 2, background: 'none', border: 'none',
             cursor: 'pointer', padding: '8px 6px', fontFamily: 'var(--font-ui)',
-            fontSize: 13.5, fontWeight: 600,
+            fontSize: 13.5, fontWeight: 600, borderRadius: 'var(--r-pill)',
             color: o.value === value ? 'var(--ink)' : 'var(--muted)',
             transition: 'color 0.3s ease',
           }}
@@ -262,23 +265,27 @@ export function Segmented({ options, value, onChange }: SegmentedProps): React.R
 interface SwitchProps {
   on: boolean;
   onClick: () => void;
+  /** Accessible name — what this switch toggles (falls back to a generic label). */
+  label?: string;
 }
 
 /** Pill toggle switch — pixel-translate thumb (no percentage jitter). */
-export function Switch({ on, onClick }: SwitchProps): React.ReactElement {
+export function Switch({ on, onClick, label }: SwitchProps): React.ReactElement {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={on ? 'Toggle off' : 'Toggle on'}
-      aria-pressed={on}
+      role="switch"
+      aria-checked={on}
+      aria-label={label ?? (on ? 'On' : 'Off')}
+      className="focus-ring"
       style={{
         width: 46, height: 27, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
         background: on ? 'var(--pine)' : 'var(--surface-2)', position: 'relative',
         boxShadow: on ? 'none' : 'inset 0 1px 2px rgba(0,0,0,0.06)',
       }}
     >
-      <span style={{
+      <span className="keel-thumb" style={{
         position: 'absolute', top: 3, left: 3, width: 21, height: 21, borderRadius: '50%',
         background: on ? 'var(--on-pine)' : 'var(--surface)', boxShadow: 'var(--shadow-sm)',
         transform: on ? 'translateX(19px)' : 'translateX(0)',
@@ -306,11 +313,11 @@ export function Pot({ kind, balance, monthlyTarget, note, style }: PotProps): Re
   const m = POT_META[kind];
   const overdrawn = balance < 0;
   const sub = monthlyTarget && monthlyTarget > 0
-    ? `${money(monthlyTarget)}/mo set aside`
+    ? `${money(monthlyTarget)}/mo`
     : (note ?? m.blurb);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, ...style }}>
-      <span style={{
+      <span aria-hidden="true" style={{
         width: 34, height: 34, borderRadius: 10, flexShrink: 0,
         background: m.soft, color: m.color,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -323,9 +330,11 @@ export function Pot({ kind, balance, monthlyTarget, note, style }: PotProps): Re
       </div>
       <div style={{ textAlign: 'right' }}>
         <div className="serif tnum" style={{ fontSize: 16.5, color: overdrawn ? 'var(--clay)' : 'var(--ink)' }}>
-          {money(balance)}
+          {overdrawn ? '−' : ''}{money(Math.abs(balance))}
         </div>
-        <div className="smallcaps" style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>set aside</div>
+        <div className="smallcaps" style={{ color: overdrawn ? 'var(--clay)' : 'var(--muted)', marginTop: 1 }}>
+          {overdrawn ? 'overdrawn' : 'set aside'}
+        </div>
       </div>
     </div>
   );
@@ -351,7 +360,7 @@ export function SplitFlow({ amount, split, ccy, srcAmount, style }: SplitFlowPro
   return (
     <div style={style}>
       <div style={{ textAlign: 'center', marginBottom: 18 }}>
-        <div className="smallcaps" style={{ color: 'var(--mint)', marginBottom: 6 }}>Received</div>
+        <div className="smallcaps" style={{ marginBottom: 6 }}>Received</div>
         <div className="serif tnum" style={{ fontSize: 40, color: 'var(--ink)', lineHeight: 1 }}>
           {foreign ? fmtFx(srcAmount!, ccy!) : <Cur n={amount} />}
         </div>
@@ -373,9 +382,14 @@ export function SplitFlow({ amount, split, ccy, srcAmount, style }: SplitFlowPro
                 borderTop: i ? '1px solid var(--hairline)' : 'none',
               }}
             >
-              <span style={{ width: 9, height: 9, borderRadius: 3, background: m.color, flexShrink: 0 }} />
+              <span aria-hidden="true" style={{
+                width: 24, height: 24, borderRadius: 8, background: m.soft, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: m.color }} />
+              </span>
               <span style={{ flex: 1, fontSize: 14.5, color: 'var(--ink)' }}>{m.label}</span>
-              <span style={{ color: 'var(--muted)', fontSize: 13 }}>→</span>
+              <span aria-hidden="true" style={{ color: 'var(--muted)', fontSize: 13 }}>→</span>
               <span className="serif tnum" style={{ fontSize: 15.5, color: 'var(--ink)', minWidth: 78, textAlign: 'right' }}>
                 {money(v)}
               </span>

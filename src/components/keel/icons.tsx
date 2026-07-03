@@ -11,15 +11,19 @@ interface IconProps {
   vb?: number;
   children?: React.ReactNode;
   d?: string;
+  /** Decorative by default (hidden from AT). Pass false when the icon conveys meaning. */
+  hidden?: boolean;
 }
 
-export function Icon({ d, size = 24, fill = false, sw = 1.7, children, vb = 24, style }: IconProps) {
+export function Icon({ d, size = 24, fill = false, sw = 1.7, children, vb = 24, style, hidden = true }: IconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox={`0 0 ${vb} ${vb}`}
       fill="none"
+      aria-hidden={hidden || undefined}
+      focusable="false"
       style={style}
       xmlns="http://www.w3.org/2000/svg"
     >
@@ -116,6 +120,7 @@ export const IconCalendar = (p: Omit<IconProps, 'd'>) => (
 export function KeelMark({ size = 26 }: { size?: number }) {
   return (
     <span
+      aria-hidden="true"
       style={{
         display: 'inline-flex',
         width: size,
