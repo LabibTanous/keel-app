@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { usePlan } from '@/lib/store';
 import type { UserGoal } from '@/lib/store';
 import { goalTradeoff, assessGoal } from '@/lib/engine';
@@ -35,9 +36,11 @@ function GoalHero({ saved, target, monthly, behind, goalName, provisional }: {
   saved: number; target: number; monthly: number; behind: boolean; goalName: string; provisional?: boolean;
 }) {
   const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
-  const projLabel = computeProjectedLabel(saved, target, monthly)
-    ? `≈ ${computeProjectedLabel(saved, target, monthly)}`
-    : (behind ? '≈ –' : 'Done');
+  const projLabel = saved >= target
+    ? 'Done'
+    : monthly <= 0
+      ? 'No monthly set'
+      : `≈ ${computeProjectedLabel(saved, target, monthly)}`;
 
   return (
     <Card style={{ padding: '20px var(--pad) 22px' }}>
@@ -65,7 +68,7 @@ function GoalHero({ saved, target, monthly, behind, goalName, provisional }: {
       </div>
 
       {/* Progress bar */}
-      <div style={{ height: 8, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', margin: '10px 0 18px' }}>
+      <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Goal progress" style={{ height: 8, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', margin: '10px 0 18px' }}>
         <div style={{ width: pct + '%', height: '100%', background: 'var(--pine)', borderRadius: 999 }} />
       </div>
 
@@ -369,6 +372,7 @@ export function GoalClient() {
   const { plan, profile, setUserGoals } = usePlan();
   const [editing, setEditing] = useState(false);
   const [editGoal, setEditGoal] = useState<UserGoal | null>(null);
+  const [editError, setEditError] = useState('');
 
   const { userGoals } = plan;
   const primaryGoal = userGoals && userGoals.length > 0 ? userGoals[0] : null;
@@ -423,13 +427,23 @@ export function GoalClient() {
 
   function saveEdit() {
     if (!editGoal) return;
-    const updated: UserGoal[] = [editGoal, ...additionalGoals];
-    setUserGoals(updated);
+    // "Other" must carry a typed name — otherwise the goal shows up literally as "Other".
+    if (editGoal.name === 'Other' && !editGoal.custom.trim()) {
+      setEditError('Give your goal a name.');
+      return;
+    }
+    const resolved: UserGoal = {
+      ...editGoal,
+      name: editGoal.name === 'Other' ? editGoal.custom.trim() : editGoal.name,
+    };
+    setUserGoals([resolved, ...additionalGoals]);
+    setEditError('');
     setEditing(false);
     setEditGoal(null);
   }
 
   function cancelEdit() {
+    setEditError('');
     setEditing(false);
     setEditGoal(null);
   }
@@ -457,7 +471,7 @@ export function GoalClient() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Stats row */}
           <StatsRow
-            bufferToday={saved}
+            bufferToday={profile.bufferBalance}
             runwayMonths={plan.runway}
             target={target}
           />
@@ -486,27 +500,36 @@ export function GoalClient() {
 
                 {/* Goal name */}
                 <div style={{ marginBottom: 10 }}>
-                  <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 6 }}>Goal name</div>
+                  <label htmlFor="goal-name" className="smallcaps" style={{ display: 'block', fontSize: 10.5, marginBottom: 6 }}>Goal name</label>
+                  <div style={{ position: 'relative' }}>
                   <select
+                    id="goal-name"
                     value={editGoal.name}
                     onChange={(e) => setEditGoal({ ...editGoal, name: e.target.value, custom: '' })}
+                    className="focus-ring"
                     style={{
-                      width: '100%', padding: '10px 13px', borderRadius: 10, marginBottom: 0,
+                      width: '100%', padding: '10px 34px 10px 13px', borderRadius: 10, marginBottom: 0,
                       border: 'none', background: 'var(--surface-2)',
                       fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--ink)',
-                      cursor: 'pointer', appearance: 'none',
+                      cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none',
                     }}
                   >
                     {GOAL_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
+                  <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true" style={{ position: 'absolute', right: 13, top: '50%', marginTop: -3, pointerEvents: 'none' }}>
+                    <path d="M1 1l4 4 4-4" stroke="var(--muted)" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+                  </svg>
+                  </div>
                   {editGoal.name === 'Other' && (
+                    <>
                     <input
                       type="text"
                       aria-label="Custom goal name"
+                      className="focus-ring"
                       value={editGoal.custom}
-                      onChange={(e) => setEditGoal({ ...editGoal, custom: e.target.value })}
+                      onChange={(e) => { setEditGoal({ ...editGoal, custom: e.target.value }); if (editError) setEditError(''); }}
                       placeholder="Describe your goal"
                       style={{
                         width: '100%', marginTop: 8, padding: '10px 13px', borderRadius: 10,
@@ -515,6 +538,8 @@ export function GoalClient() {
                         boxSizing: 'border-box',
                       }}
                     />
+                    {editError && <div role="alert" style={{ marginTop: 6, fontSize: 12.5, color: 'var(--clay)' }}>{editError}</div>}
+                    </>
                   )}
                 </div>
 
@@ -528,6 +553,7 @@ export function GoalClient() {
                     <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>AED</span>
                     <input
                       aria-label="Target amount"
+                      className="focus-ring"
                       inputMode="numeric"
                       value={editGoal.targetAmt > 0 ? String(editGoal.targetAmt) : ''}
                       onChange={(e) => setEditGoal({ ...editGoal, targetAmt: parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0 })}
@@ -547,6 +573,7 @@ export function GoalClient() {
                   <input
                     type="month"
                     aria-label="Target date"
+                    className="focus-ring"
                     value={editGoal.targetDate}
                     onChange={(e) => setEditGoal({ ...editGoal, targetDate: e.target.value })}
                     style={{
@@ -562,6 +589,7 @@ export function GoalClient() {
                   <button
                     type="button"
                     onClick={saveEdit}
+                    className="focus-ring"
                     style={{
                       flex: 1, padding: '11px 0', borderRadius: 999, border: 'none',
                       background: 'var(--pine)', color: 'var(--on-pine)',
@@ -571,6 +599,7 @@ export function GoalClient() {
                   <button
                     type="button"
                     onClick={cancelEdit}
+                    className="focus-ring"
                     style={{
                       flex: 1, padding: '11px 0', borderRadius: 999,
                       border: '1px solid var(--hairline)', background: 'var(--surface)',
@@ -585,6 +614,7 @@ export function GoalClient() {
                 <button
                   type="button"
                   onClick={startEdit}
+                  className="focus-ring"
                   style={{
                     background: 'var(--surface-2)', border: 'none', borderRadius: 999,
                     padding: '7px 14px', fontFamily: 'var(--font-ui)', fontSize: 12.5,
@@ -620,9 +650,9 @@ export function GoalClient() {
                     >
                       <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{g.name}</span>
                       <span style={{ fontSize: 12.5, color: 'var(--muted)', textAlign: 'right' }}>
-                        {g.targetAmt > 0 && <span>AED {g.targetAmt.toLocaleString()}</span>}
+                        {g.targetAmt > 0 && <span>{money(g.targetAmt)}</span>}
                         {g.targetAmt > 0 && g.targetDate && <span> · </span>}
-                        {g.targetDate && <span>{g.targetDate}</span>}
+                        {g.targetDate && <span>{new Date(g.targetDate + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>}
                       </span>
                     </div>
                   ))}
@@ -631,7 +661,7 @@ export function GoalClient() {
             )}
             {tradeoff.monthsToGoal !== null && (
               <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--muted)' }}>
-                Putting <b style={{ color: 'var(--ink)' }}>AED {Math.round(plan.allocation.buffer).toLocaleString('en-US')}/mo</b> toward your runway buffer — full {profile.targetMonths}-month target in about <b style={{ color: 'var(--ink)' }}>{tradeoff.monthsToGoal} month{tradeoff.monthsToGoal !== 1 ? 's' : ''}</b>. That leaves <b style={{ color: 'var(--ink)' }}>AED {Math.round(plan.allocation.spending).toLocaleString('en-US')}/mo</b> to spend freely — comfortable, or want to push the date and spend more now?
+                Putting <b style={{ color: 'var(--ink)' }}>{money(plan.allocation.buffer)}/mo</b> toward your runway buffer — full {profile.targetMonths}-month target in about <b style={{ color: 'var(--ink)' }}>{tradeoff.monthsToGoal} month{tradeoff.monthsToGoal !== 1 ? 's' : ''}</b>. That leaves <b style={{ color: 'var(--ink)' }}>{money(plan.allocation.spending)}/mo</b> to spend freely — comfortable, or want to push the date and spend more now?
               </p>
             )}
           </div>
@@ -644,14 +674,14 @@ export function GoalClient() {
           {/* Tax heads-up (if near threshold) */}
           {plan.taxTurnover > 0 && (
             <div className="rise" style={{ animationDelay: '150ms' }}>
-              <div style={{
+              <Link href="/tax" className="focus-ring" style={{
                 display: 'flex', alignItems: 'center', gap: 13, textDecoration: 'none',
                 background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)',
                 padding: '15px var(--pad)', border: '1px solid var(--hairline)',
               }}>
                 <span style={{
                   width: 40, height: 40, borderRadius: 12,
-                  background: 'var(--pine)', color: '#fff',
+                  background: 'var(--pine)', color: 'var(--on-pine)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   <IconCalendar size={21} />
@@ -662,10 +692,10 @@ export function GoalClient() {
                     Nothing due — Keel is watching the lines for you.
                   </span>
                 </span>
-                <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+                <svg width="8" height="14" viewBox="0 0 8 14" aria-hidden="true" style={{ flexShrink: 0 }}>
                   <path d="M1 1l6 6-6 6" stroke="var(--pine)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
                 </svg>
-              </div>
+              </Link>
             </div>
           )}
         </div>

@@ -168,11 +168,15 @@
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; transform: none; }
   .sk   { animation: none; }
-  /* Segmented / Switch thumbs animate via inline transition — disable it here.
-     !important is required to override the non-important inline transition. */
-  .keel-thumb { transition: none !important; }
-  /* Bottom-sheet slide + backdrop fade (AddFlow / Assistant) */
-  .keel-sheet, .keel-backdrop { transition-duration: 0.01ms !important; }
+  /* Blanket guard: the app styles motion via inline transitions/animations that a
+     class-scoped rule can't reach. Near-zero (not 0) keeps transitionend/animationend
+     handlers firing. Covers toggles, thumbs, sheets, timeline dots app-wide. */
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ── Range slider (Paycheck screen) ────────────────────────────────────────── */

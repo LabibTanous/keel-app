@@ -29,15 +29,15 @@ function ConfPill({ conf }: { conf: string }) {
 
 // ── Count Toggle (reused from Dock pattern) ───────────────────────────────────
 
-function CountToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function CountToggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
-    <button type="button" onClick={onClick} aria-label={on ? 'Toggle off' : 'Toggle on'} aria-pressed={on} style={{
+    <button type="button" onClick={onClick} role="switch" aria-checked={on} aria-label={label} className="focus-ring" style={{
       width: 46, height: 27, borderRadius: 999, border: 'none', cursor: 'pointer',
       background: on ? 'var(--pine)' : 'var(--surface-2)', position: 'relative',
       transition: 'background 0.3s ease', flexShrink: 0,
       boxShadow: on ? 'none' : 'inset 0 1px 2px rgba(0,0,0,0.06)',
     }}>
-      <span style={{
+      <span className="keel-thumb" style={{
         position: 'absolute', top: 3, left: 3, width: 21, height: 21, borderRadius: '50%',
         background: on ? 'var(--on-pine)' : 'var(--surface)', boxShadow: 'var(--shadow-sm)',
         transform: on ? 'translateX(19px)' : 'translateX(0)',
@@ -119,7 +119,7 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 13 }}>
             {isReceived ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--mint)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
                   <path d="M5 12.5l4.5 4.5L19 7" stroke="var(--mint)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 Received
@@ -130,7 +130,7 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: counted ? 'var(--pine)' : 'var(--muted)' }}>
                   {counted ? 'In the plan' : 'Count it'}
                 </span>
-                <CountToggle on={counted} onClick={onToggle} />
+                <CountToggle on={counted} onClick={onToggle} label={`Count ${item.who}, ${item.date}, in your plan`} />
               </div>
             )}
             {isReceived && !historical && (
@@ -145,8 +145,8 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
           )}
 
           {warn && (
-            <div style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--hairline)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-              <span style={{ color: 'var(--clay)', fontSize: 13, lineHeight: 1.3 }}>⚠</span>
+            <div role="status" style={{ marginTop: 11, paddingTop: 11, borderTop: '1px solid var(--hairline)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span aria-hidden="true" style={{ color: 'var(--clay)', fontSize: 13, lineHeight: 1.3 }}>⚠</span>
               <span style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--clay)' }}>
                 You&apos;re counting money that isn&apos;t confirmed — a no-show would leave your plan short.
               </span>
@@ -155,11 +155,12 @@ function TimelineItem({ item, counted, onToggle, received, historical = false, o
 
           {!isReceived && (
             <div style={{ marginTop: 12, paddingTop: 11, borderTop: '1px solid var(--hairline)' }}>
-              <button type="button" onClick={onReceive} style={{
+              <button type="button" onClick={onReceive} className="focus-ring" style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7, background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--pine)', fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, padding: 0,
+                color: 'var(--pine)', fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600,
+                padding: '10px 0', margin: '-10px 0',
               }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
                   <path d="M5 12.5l4.5 4.5L19 7" stroke="var(--pine)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 It landed — mark as received
@@ -217,7 +218,7 @@ function incomeToTimeline(inc: IncomeItem, index: number): TimelineItemData {
     id: `inc-${index}`,
     date: label,
     who: 'Income payment',
-    note: `${inc.currency} · ${inc.confidence}`,
+    note: `${inc.currency} · ${(CONF[inc.confidence] ?? CONF.possible).label}`,
     amt: inc.amount,
     ccy: inc.currency,
     conf: inc.confidence,
@@ -290,11 +291,26 @@ export function ComingClient() {
   const markReceived = (id: string) => {
     const idx = parseInt(id.replace('inc-', ''), 10);
     const inc = profile.incomes[idx];
-    if (inc) {
-      const today = new Date().toISOString().slice(0, 10);
-      addIncome({ amount: inc.amount, currency: inc.currency, date: today, confidence: 'confirmed' });
+    if (!inc) {
+      setReceived(r => ({ ...r, [id]: true }));
+      return;
     }
-    setReceived(r => ({ ...r, [id]: true }));
+    // addIncome appends, so the new entry's timeline id is deterministic. Mark BOTH the
+    // original expected row and the freshly-appended confirmed row received, so the new
+    // one doesn't reappear as a duplicate "Expected" row.
+    const newId = 'inc-' + profile.incomes.length;
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    addIncome({ amount: inc.amount, currency: inc.currency, date: today, confidence: 'confirmed' });
+    const newReceived = { ...received, [id]: true, [newId]: true };
+    setReceived(newReceived);
+    // Overwrite the tracked total (the reducer bumped it for the new confirmed income)
+    // with the single source of truth: counted, not-yet-received expected items only.
+    // The received money now flows through the plan as real logged income instead.
+    const newTotal = allItems
+      .filter(i => i.id !== id && !newReceived[i.id] && counted[i.id])
+      .reduce((s, i) => s + toAED(i.amt, i.ccy), 0);
+    setTracked(newTotal);
   };
 
   // Recurring confirmed items (from paycheck-type income set up in onboarding) are
@@ -349,7 +365,7 @@ export function ComingClient() {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '60px 18px 132px' }}>
         {/* Title */}
         <div style={{ textAlign: 'center', margin: '6px 0 22px' }}>
-          <div className="serif" style={{ fontSize: 33, color: 'var(--ink)', lineHeight: 1.05 }}>What&apos;s coming</div>
+          <h1 className="serif" style={{ margin: 0, fontWeight: 500, fontSize: 33, color: 'var(--ink)', lineHeight: 1.05 }}>What&apos;s coming</h1>
           <p style={{ margin: '9px auto 0', maxWidth: 280, fontSize: 13.5, lineHeight: 1.45, color: 'var(--muted)' }}>
             Money you expect — track it freely, count it only when you&apos;re sure.
           </p>
@@ -447,7 +463,7 @@ export function ComingClient() {
           {/* Big payments section */}
           {view !== 'received' && (
             <div className="rise" style={{ animationDelay: '200ms' }}>
-              <div className="smallcaps" style={{ margin: '4px 6px 11px' }}>Upcoming big payments</div>
+              <h2 className="smallcaps" style={{ margin: '4px 6px 11px' }}>Upcoming big payments</h2>
               {plan.bigPayments.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 13.5 }}>
                   No big payments logged yet — tap + to add one.
