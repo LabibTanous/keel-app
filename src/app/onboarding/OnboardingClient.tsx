@@ -200,7 +200,7 @@ function ObAmount({
         }}
       >
         {!onCcy && (
-          <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>AED</span>
+          <span style={{ fontSize: 14, color: 'var(--muted)', flexShrink: 0 }}>{ccy || 'AED'}</span>
         )}
         <input
           aria-label="Amount"
@@ -226,6 +226,8 @@ function ObAmount({
           <select
             value={ccy}
             onChange={(e) => onCcy(e.target.value)}
+            aria-label="Currency"
+            className="focus-ring"
             style={{
               ...obInput,
               width: 'auto',
@@ -368,12 +370,16 @@ function RegionStep({
 
       <div style={{ marginTop: 18 }}>
         <div className="smallcaps" style={{ fontSize: 10.5, marginBottom: 10 }}>Dependants (spouse, children)</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div role="group" aria-label="Dependants" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <button type="button"
+            aria-label="Fewer dependants"
+            className="focus-ring"
             onClick={() => set({ dependants: Math.max(0, data.dependants - 1) })}
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--hairline)', background: 'var(--surface-2)', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>−</button>
-          <span className="serif" style={{ fontSize: 28, color: 'var(--ink)', minWidth: 30, textAlign: 'center' }}>{data.dependants}</span>
+          <span className="serif" aria-live="polite" style={{ fontSize: 28, color: 'var(--ink)', minWidth: 30, textAlign: 'center' }}>{data.dependants}</span>
           <button type="button"
+            aria-label="More dependants"
+            className="focus-ring"
             onClick={() => set({ dependants: Math.min(10, data.dependants + 1) })}
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--hairline)', background: 'var(--surface-2)', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink)' }}>+</button>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>people relying on your income</span>
@@ -509,17 +515,17 @@ function EssentialsStep({
       />
 
       <ObField label="Rent / housing">
-        <ObAmount value={data.rent} onChange={(v) => set({ rent: v })} />
+        <ObAmount value={data.rent} onChange={(v) => set({ rent: v })} ccy={data.ccy} />
         {rent > 0 && dayInput(data.rentDueDay, (v) => set({ rentDueDay: v }))}
       </ObField>
 
       <ObField label="Bills & utilities">
-        <ObAmount value={data.bills} onChange={(v) => set({ bills: v })} />
+        <ObAmount value={data.bills} onChange={(v) => set({ bills: v })} ccy={data.ccy} />
         {bills > 0 && dayInput(data.billsDueDay, (v) => set({ billsDueDay: v }))}
       </ObField>
 
       <ObField label="Transport / commute">
-        <ObAmount value={data.transport} onChange={(v) => set({ transport: v })} placeholder="0 (optional)" />
+        <ObAmount value={data.transport} onChange={(v) => set({ transport: v })} ccy={data.ccy} placeholder="0 (optional)" />
       </ObField>
 
       {/* Subscriptions — dynamic list */}
@@ -565,6 +571,8 @@ function EssentialsStep({
                 />
                 <button
                   type="button" onClick={() => removeSub(i)}
+                  aria-label={`Remove ${r.name || 'subscription'}`}
+                  className="focus-ring"
                   style={{
                     width: 28, height: 28, borderRadius: '50%', border: 'none',
                     background: 'var(--surface-2)', cursor: 'pointer', flexShrink: 0,
@@ -589,7 +597,7 @@ function EssentialsStep({
       </div>
 
       <ObField label="Other fixed costs">
-        <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} placeholder="0 (optional)" />
+        <ObAmount value={data.otherExpenses} onChange={(v) => set({ otherExpenses: v })} ccy={data.ccy} placeholder="0 (optional)" />
       </ObField>
 
       <TaxStep data={data} set={set} />
@@ -739,6 +747,8 @@ function GoalsStep({
               <button
                 type="button"
                 onClick={() => removeGoal(i)}
+                aria-label={`Remove goal ${i + 1}`}
+                className="focus-ring"
                 style={{
                   width: 24, height: 24, borderRadius: '50%', border: 'none',
                   background: 'var(--surface-2)', cursor: 'pointer',
@@ -1296,7 +1306,7 @@ function ReadyStep({ data, set }: { data: ObData; set: (patch: Partial<ObData>) 
         })()}
 
         {data.authError && (
-          <div style={{ fontSize: 13, color: 'var(--clay)', marginTop: -4 }}>{data.authError}</div>
+          <div role="alert" style={{ fontSize: 13, color: 'var(--clay)', marginTop: -4 }}>{data.authError}</div>
         )}
       </div>
 
@@ -1501,6 +1511,7 @@ export function OnboardingClient(): React.ReactElement {
 
   const [stepIdx, setStepIdx] = useState(0);
   const [data, setData] = useState<ObData>(INITIAL_DATA);
+  const [submitting, setSubmitting] = useState(false);
 
   function set(patch: Partial<ObData>) {
     setData((d) => ({ ...d, ...patch }));
@@ -1520,7 +1531,12 @@ export function OnboardingClient(): React.ReactElement {
 
   function next() {
     if (isLast) {
-      commitAndNavigate().catch((err) => console.error('[onboarding] commitAndNavigate error:', err));
+      if (submitting) return; // guard against double-tap sending duplicate /api/register
+      commitAndNavigate().catch((err) => {
+        console.error('[onboarding] commitAndNavigate error:', err);
+        set({ authError: 'Something went wrong — check your connection and try again.' });
+        setSubmitting(false);
+      });
       return;
     }
     setStepIdx((i) => i + 1);
@@ -1542,6 +1558,9 @@ export function OnboardingClient(): React.ReactElement {
       set({ authError: 'Password must be at least 6 characters.' });
       return;
     }
+
+    setSubmitting(true);
+    set({ authError: '' });
 
     const incomeItems: IncomeItem[] = expandIncomeRows(data.incomes, data.incomePattern);
 
@@ -1601,6 +1620,7 @@ export function OnboardingClient(): React.ReactElement {
     if (!regRes.ok) {
       const regData = await regRes.json();
       set({ authError: regData.error || 'Registration failed. Please try again.' });
+      setSubmitting(false);
       return;
     }
 
@@ -1799,21 +1819,24 @@ export function OnboardingClient(): React.ReactElement {
         <button
           type="button"
           onClick={next}
+          disabled={submitting}
+          className="focus-ring"
           style={{
             width: '100%',
             padding: '16px',
             borderRadius: 'var(--r-pill)',
-            cursor: 'pointer',
+            cursor: submitting ? 'default' : 'pointer',
             background: 'var(--pine)',
             color: 'var(--on-pine)',
             border: 'none',
             fontFamily: 'var(--font-ui)',
             fontSize: 16,
             fontWeight: 700,
+            opacity: submitting ? 0.6 : 1,
             boxShadow: '0 6px 18px rgba(31,77,58,0.28)',
           }}
         >
-          {ctaLabel}
+          {submitting ? 'Creating your account…' : ctaLabel}
         </button>
       </div>
     </div>
