@@ -295,17 +295,17 @@ export function AffordClient() {
       {/* Header */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '60px 18px 14px' }}>
-          <Link href="/dashboard" style={{
+          <Link href="/dashboard" aria-label="Back to dashboard" className="focus-ring" style={{
             width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
             background: 'var(--surface)', boxShadow: 'var(--shadow-sm)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--ink)', textDecoration: 'none', border: '1px solid var(--hairline)',
           }}>
-            <svg width="11" height="18" viewBox="0 0 11 18" fill="none">
+            <svg width="11" height="18" viewBox="0 0 11 18" fill="none" aria-hidden="true" focusable="false">
               <path d="M9 2 2 9l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </Link>
-          <div className="serif" style={{ fontSize: 24, color: 'var(--ink)' }}>Can I afford this?</div>
+          <h1 className="serif" style={{ margin: 0, fontWeight: 500, fontSize: 24, color: 'var(--ink)' }}>Can I afford this?</h1>
         </div>
         <div style={{ padding: '0 18px 6px', marginTop: -2 }}>
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: 'var(--muted)' }}>

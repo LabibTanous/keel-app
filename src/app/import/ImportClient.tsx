@@ -146,6 +146,11 @@ function UploadStep({ onTransactionsParsed }: { onTransactionsParsed: (txs: Pars
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload a bank statement (PDF or CSV)"
+        className="focus-ring"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={e => {
@@ -168,7 +173,8 @@ function UploadStep({ onTransactionsParsed }: { onTransactionsParsed: (txs: Pars
           type="file"
           accept=".pdf,.csv"
           aria-label="Upload bank statement"
-          style={{ display: 'none' }}
+          tabIndex={-1}
+          style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
           onChange={e => {
             const f = e.target.files?.[0];
             if (f) handleFile(f);
@@ -478,10 +484,13 @@ function AddIncomeForm({ onAdd }: { onAdd: (i: IncomeItem) => void }) {
           />
         </div>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Currency</div>
+          <label htmlFor="import-currency" style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Currency</label>
           <select
+            id="import-currency"
+            name="currency"
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
+            className="focus-ring"
             style={{
               border: '1px solid var(--hairline)', background: 'var(--surface-2)',
               borderRadius: 10, padding: '10px 12px', fontFamily: 'var(--font-ui)', fontSize: 15,

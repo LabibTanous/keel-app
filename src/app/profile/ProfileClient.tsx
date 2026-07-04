@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePlan } from '@/lib/store';
 import { Card, Disclaimer, Switch } from '@/components/keel/ui';
 import { Dock } from '@/components/keel/Dock';
+import { KEEL_OPEN_ADD, KEEL_OPEN_ASSISTANT } from '@/components/keel/GlobalOverlays';
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ function ToggleRow({ label, sub, on, onChange, last }: ToggleRowProps) {
         <div style={{ fontSize: 15.5, color: 'var(--ink)' }}>{label}</div>
         {sub && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
       </div>
-      <Switch on={on} onClick={onChange} />
+      <Switch on={on} onClick={onChange} label={label} />
     </div>
   );
 }
@@ -114,22 +115,29 @@ function NotifSheet({ open, notif, toggleNotif, onClose }: NotifSheetProps) {
     ['goal',    'Goal milestones',   null],
   ];
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 70, pointerEvents: open ? 'auto' : 'none' }}>
+    <div
+      aria-hidden={!open}
+      // @ts-expect-error — `inert` is a valid DOM attr (React 18.3 forwards it).
+      inert={!open ? '' : undefined}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 70, pointerEvents: open ? 'auto' : 'none' }}
+    >
       <button
         type="button"
         aria-label="Close notifications"
         onClick={onClose}
+        className="focus-ring"
         style={{ position: 'absolute', inset: 0, background: 'rgba(20,25,21,0.32)', opacity: open ? 1 : 0, transition: 'opacity 0.25s', border: 'none', cursor: 'pointer', width: '100%', height: '100%', padding: 0 }}
       />
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-labelledby="notif-sheet-title" style={{
         position: 'absolute', left: 0, right: 0, bottom: 0, background: 'var(--bg)',
         borderRadius: '26px 26px 0 0', padding: '12px 18px 28px',
-        transform: open ? 'translateY(0)' : 'translateY(900px)',
+        transform: open ? 'translateY(0)' : 'translateY(100%)',
         transition: 'transform 0.35s cubic-bezier(0.32,0.72,0,1)',
         boxShadow: '0 -10px 40px rgba(0,0,0,0.18)',
       }}>
         <div style={{ width: 38, height: 4, borderRadius: 4, background: 'var(--hairline)', margin: '0 auto 14px' }} />
-        <div className="serif" style={{ fontSize: 22, color: 'var(--ink)', marginBottom: 6 }}>Notifications</div>
+        <h2 id="notif-sheet-title" className="serif" style={{ margin: '0 0 6px', fontWeight: 400, fontSize: 22, color: 'var(--ink)' }}>Notifications</h2>
         <div style={{ background: 'var(--surface)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-sm)', padding: '2px var(--pad)', marginTop: 8 }}>
           {rows.map(([k, label, sub], i) => (
             <ToggleRow
@@ -174,24 +182,31 @@ function SettingsSheet({ cfg, current, onPick, onClose }: SettingsSheetProps) {
   const open = !!cfg;
   const inputRef = React.useRef<HTMLInputElement>(null);
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 70, pointerEvents: open ? 'auto' : 'none' }}>
+    <div
+      aria-hidden={!open}
+      // @ts-expect-error — `inert` is a valid DOM attr (React 18.3 forwards it).
+      inert={!open ? '' : undefined}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 70, pointerEvents: open ? 'auto' : 'none' }}
+    >
       <button
         type="button"
         aria-label="Close settings"
         onClick={onClose}
+        className="focus-ring"
         style={{ position: 'absolute', inset: 0, background: 'rgba(20,25,21,0.32)', opacity: open ? 1 : 0, transition: 'opacity 0.25s', border: 'none', cursor: 'pointer', width: '100%', height: '100%', padding: 0 }}
       />
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-labelledby="settings-sheet-title" style={{
         position: 'absolute', left: 0, right: 0, bottom: 0, background: 'var(--bg)',
         borderRadius: '26px 26px 0 0', padding: '12px 18px 30px',
-        transform: open ? 'translateY(0)' : 'translateY(900px)',
+        transform: open ? 'translateY(0)' : 'translateY(100%)',
         transition: 'transform 0.35s cubic-bezier(0.32,0.72,0,1)',
         boxShadow: '0 -10px 40px rgba(0,0,0,0.18)',
       }}>
         <div style={{ width: 38, height: 4, borderRadius: 4, background: 'var(--hairline)', margin: '0 auto 16px' }} />
         {cfg && (
           <div>
-            <div className="serif" style={{ fontSize: 22, color: 'var(--ink)', marginBottom: cfg.info ? 6 : 14 }}>{cfg.title}</div>
+            <h2 id="settings-sheet-title" className="serif" style={{ margin: 0, fontWeight: 400, fontSize: 22, color: 'var(--ink)', marginBottom: cfg.info ? 6 : 14 }}>{cfg.title}</h2>
             {cfg.info && <p style={{ margin: '0 0 16px', fontSize: 13.5, lineHeight: 1.5, color: 'var(--muted)' }}>{cfg.info}</p>}
 
             {cfg.input && (
@@ -477,8 +492,8 @@ export function ProfileClient() {
       </div>
 
       <Dock
-        active="home"
-        onAdd={() => {}}
+        onAdd={() => window.dispatchEvent(new Event(KEEL_OPEN_ADD))}
+        onAssistant={() => window.dispatchEvent(new Event(KEEL_OPEN_ASSISTANT))}
         links={{ home: '/dashboard', coming: '/coming', goal: '/goal' }}
       />
 
